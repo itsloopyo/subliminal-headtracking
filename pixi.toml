@@ -1,0 +1,64 @@
+[workspace]
+name = "subliminal-headtracking"
+version = "0.0.0"
+description = "Head tracking mod for Subliminal (UE 5.7)"
+license = "MIT"
+license-file = "LICENSE"
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[tasks]
+update-submodule = "git submodule update --remote cameraunlock-core && powershell -NoProfile -ExecutionPolicy Bypass -File cameraunlock-core/scripts/update-submodule.ps1"
+sync = "git submodule update --remote cameraunlock-core"
+
+# No -G: let CMake auto-detect the installed Visual Studio generator. Pinning
+# "Visual Studio 17 2022" broke on CI once the windows runner image moved to
+# VS 2026 (VS 17 absent); auto-detect picks whatever VS the machine has.
+# Guarded on the generated project, not on the directory. CMake creates build/
+# and its cache BEFORE the FetchContent step that clones MinHook, so a configure
+# that fails there (no network, a proxy, a GitHub outage) leaves a directory with
+# no .vcxproj in it. Guarding on the directory then skips setup forever and every
+# later build dies on MSB1009 "Project file does not exist", which points at
+# MSBuild rather than at the configure that actually failed.
+setup = { cmd = """
+    powershell -Command "if (-not (Test-Path 'build/ALL_BUILD.vcxproj')) { cmake -B build -A x64 } else { Write-Host 'Build files already generated, skipping setup' -ForegroundColor Yellow }"
+""" }
+
+build = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
+build-debug = { cmd = "cmake --build build --config Debug", depends-on = ["setup"] }
+
+# Behaviour locks for the camera boundary, the reticle projection and the
+# caller gate.
+test = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build"] }
+
+clean = { cmd = """
+    powershell -Command "if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; Write-Host 'Build artifacts cleaned' -ForegroundColor Green"
+""" }
+
+# Bump the vendored Ultimate ASI Loader copy. Manual, with a commit attached -
+# nothing depends on it; build/package/release consume whatever is committed
+# under vendor/.
+update-deps = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update-deps.ps1" }
+
+# The installer ZIP. One archive, no Nexus layout - see the packager's header.
+#
+# Gated on `test`, not on `build`. The release path - release.ps1 and the shared
+# release-mod.yml - only ever calls `package`, so hanging the behaviour locks off
+# `build` alone left every tagged release shipping without them: a sign inverted
+# in camera_boundary.cpp would fail `pixi run test` and still publish.
+package = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["test"] }
+
+# Full release workflow: stamp version, changelog, package, commit, tag, push.
+# Dispatches on its argument: major | minor | patch | nightly | X.Y.Z.
+release = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1" }
+
+# Launch the game for a test run.
+launch = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/launch.ps1" }
+
+# Build + deploy into the detected game install (the dev loop).
+deploy = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy.ps1", depends-on = ["build"] }
+install = { depends-on = ["deploy"] }
+uninstall = 'cmd /c scripts\uninstall.cmd'
+
+[dependencies]
+# No pixi-managed deps - relies on system CMake + Visual Studio.

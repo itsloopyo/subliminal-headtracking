@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "mod_info": {
+    "name": "SubliminalHeadTracking",
+    "version": "0.0.0",
+    "game_id": "subliminal"
+  },
+  "strategy": "AsiLoader",
+  "delivery_mode": "manifest",
+
+  "files": [
+    { "source": "vendor/ultimate-asi-loader/dinput8.dll", "target": "Subliminal/Binaries/Win64/winmm.dll" },
+    { "source": "plugins/SubliminalHeadTracking.asi", "target": "Subliminal/Binaries/Win64/SubliminalHeadTracking.asi" }
+  ],
+
+  "runtime_requirements": [],
+  "dependencies": []
+}
