@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0] - 2026-09-20
+
+### Other
+
+- Hello world
+
 All notable changes to this project are documented here.
 
 ## [0.0.0] - 2026-09-06
