@@ -21,8 +21,10 @@
 #include "session.h"
 #include "view_hook.h"
 
+#include "cameraunlock/config/defaults_file.h"
 #include "cameraunlock/diagnostics/crash_handler.h"
 #include "cameraunlock/hooks/hook_manager.h"
+#include "cameraunlock/os/module_paths.h"
 #include "cameraunlock/unreal/ue_runtime.h"
 
 namespace subliminal_ht {
@@ -31,33 +33,21 @@ namespace {
 
 namespace ue = ::cameraunlock::unreal;
 
-using cameraunlock::TrackingMode;
-
 HANDLE g_bootstrapThread = nullptr;
 
 Config g_config;
 std::unique_ptr<cameraunlock::UdpReceiver> g_receiver;
 std::unique_ptr<Session> g_session;
 
+// The processors keep their identity sensitivity and inversion: the pose is
+// applied as the tracker sends it.
 void ApplyConfigToSession() {
-    cameraunlock::SensitivitySettings sens;
-    sens.yaw          = g_config.yaw_sensitivity;
-    sens.pitch        = g_config.pitch_sensitivity;
-    sens.roll         = g_config.roll_sensitivity;
-    sens.invert_yaw   = g_config.invert_yaw;
-    sens.invert_pitch = g_config.invert_pitch;
-    sens.invert_roll  = g_config.invert_roll;
-    g_session->GetProcessor().SetSensitivity(sens);
-
     auto& ps = g_session->GetPositionProcessor().GetSettings();
-    ps.sensitivity_x = g_config.position_sensitivity_x;
-    ps.sensitivity_y = g_config.position_sensitivity_y;
-    ps.sensitivity_z = g_config.position_sensitivity_z;
-    ps.limit_x       = g_config.limit_x;
-    ps.limit_y       = g_config.limit_y;
-    ps.limit_y_down  = g_config.limit_y_down;
-    ps.limit_z       = g_config.limit_z;
-    ps.limit_z_back  = g_config.limit_z_back;
+    ps.limit_x       = g_config.position_limit_x;
+    ps.limit_y       = g_config.position_limit_y;
+    ps.limit_y_down  = g_config.position_limit_y_down;
+    ps.limit_z       = g_config.position_limit_z;
+    ps.limit_z_back  = g_config.position_limit_z_back;
 
     // The session feeds both the rotation and the position processor - there is
     // no separate position smoothing setting - and picks between the two values
@@ -68,9 +58,7 @@ void ApplyConfigToSession() {
     g_session->SetLocalSmoothing(g_config.local_smoothing);
     g_session->SetRemoteSmoothing(g_config.remote_smoothing);
 
-    g_session->SetMode(g_config.position_enabled
-        ? TrackingMode::RotationAndPosition
-        : TrackingMode::RotationOnly);
+    g_session->SetMode(config::StartupTrackingMode(g_config));
 }
 
 // Zeroed, and the return value checked: GetModuleFileName leaves the buffer
@@ -85,15 +73,6 @@ std::wstring ExeDir() {
     return slash == std::wstring::npos ? L"." : s.substr(0, slash);
 }
 
-// Narrow sibling of ExeDir for the ANSI IniReader (GetPrivateProfile*A).
-std::string ExeDirNarrow() {
-    char path[MAX_PATH] = {};
-    if (GetModuleFileNameA(nullptr, path, MAX_PATH) == 0) return ".";
-    std::string s(path);
-    const auto slash = s.find_last_of("\\/");
-    return slash == std::string::npos ? "." : s.substr(0, slash);
-}
-
 void OpenLog() {
     // Core opens with CREATE_ALWAYS, so the log holds this session only, and
     // rotates the outgoing one to HeadTracking.prev.log first - the session
@@ -104,14 +83,23 @@ void OpenLog() {
     Log::Line("=== Subliminal Head Tracking v" SUBLIMINAL_HT_VERSION " (UE 5.7) ===");
 }
 
+// CameraUnlock.ini beside the game exe, read, imported or created by the config
+// owner.
 void LoadConfig() {
-    const std::string exeDir = ExeDirNarrow();
-    config_write_default_if_missing(exeDir);
-    config_load(exeDir, g_config);
-    Log::Line("config: udp_port=%d enable=%d yaw_sens=%.2f smoothing=local %.2f/remote %.2f position=%d",
+    // Empty only when the exe's own path cannot be read. The owner needs a full
+    // path, and a relative one would put the file wherever the game was started
+    // from, so the settings stay at their defaults and nothing is saved.
+    const std::wstring exeDir = cameraunlock::os::HostExeDirectory();
+    if (exeDir.empty()) {
+        Log::Line("config: the game directory could not be read, so CameraUnlock.ini "
+                  "cannot be read or written - using defaults, and nothing is saved");
+        g_config = config::Table().defaults();
+        return;
+    }
+    g_config = config::Load(exeDir, cameraunlock::config::DefaultsFile::PerUser());
+    Log::Line("config: udp_port=%d enable=%d smoothing=local %.2f/remote %.2f",
         g_config.udp_port, g_config.enable_on_startup ? 1 : 0,
-        g_config.yaw_sensitivity, g_config.local_smoothing, g_config.remote_smoothing,
-        g_config.position_enabled ? 1 : 0);
+        g_config.local_smoothing, g_config.remote_smoothing);
 }
 
 // Fingerprint the host EXE against the build registry. False leaves the mod
@@ -181,12 +169,9 @@ DWORD WINAPI BootstrapThread(LPVOID) {
         return 0;
 
     hotkeys::Register(g_config, *g_session);
-    Log::Line("init complete. End=toggle PageUp=trackingmode VK 0x%02X=yawmode (%s) "
-              "(chords Ctrl+Shift+Y/G/H). Collision clamp %s, reticle %s. "
-              "Waiting for a tracker on UDP %d.",
-        g_config.yaw_mode_key, g_config.world_space_yaw ? "world" : "local",
+    Log::Line("init complete. Yaw mode %s, collision clamp %s. Waiting for a tracker on UDP %d.",
+        g_config.world_space_yaw ? "world" : "local",
         g_config.collision_enabled ? "on" : "off",
-        g_config.reticle_follows_aim ? "follows the aim" : "left where the game draws it",
         g_config.udp_port);
     return 0;
 }

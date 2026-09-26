@@ -439,7 +439,7 @@ struct AimSample {
 };
 
 // Where the interaction ray lands, projected into the frame that is about to be
-// drawn, and pushed onto the game's own crosshair.
+// drawn, and pushed onto the game's own crosshair, which always follows it.
 //
 // The ray leaves the CLEAN eye along the CLEAN forward - it is the mouse-driven
 // aim the game will use - while the frame is drawn from the leaned eye, and the
@@ -454,7 +454,7 @@ AimSample UpdateReticle(const Config& config, std::uintptr_t pawn,
     frame.RenderedEye = renderedEye;
     frame.TrackedRotation = trackedQ;
     frame.Direction = ue::QuatRotateVec(cleanQ, FVector{1.0, 0.0, 0.0});
-    if (config.reticle_follows_aim && pawn != 0) {
+    if (pawn != 0) {
         const aim_trace::Result hit = aim_trace::Cast(
             pawn, cleanEye, frame.Direction, config.aim_trace_distance);
         if (hit.Valid && hit.Hit) {
@@ -468,7 +468,7 @@ AimSample UpdateReticle(const Config& config, std::uintptr_t pawn,
         // A cast that could not run leaves it false too, and the projection is
         // then the honest rotation-only one rather than a guessed depth.
     }
-    aim_projection::Update(frame, fovDegrees, config.reticle_follows_aim);
+    aim_projection::Update(frame, fovDegrees, true);
     reticle_mover::Tick();
     return aim;
 }
@@ -579,10 +579,10 @@ void __fastcall GetPlayerViewPoint_Hook(void* self, FVector* outLocation,
     // asks for - the two are not the same operation once more than one axis is
     // non-zero, and matching the camera's composition is what stops the beam and
     // the view disagreeing about which way the head turned.
-    if (config.flashlight.follows_head) {
+    if (config.light_follows_head) {
         const auto beam = cameraunlock::effects::ScaleHeadEuler(
             {static_cast<float>(yaw), static_cast<float>(pitch), static_cast<float>(roll)},
-            config.flashlight.multiplier);
+            config.light_multiplier);
         FRotator beamRot = clean;
         camera_boundary::ApplyHeadPose(beamRot, beam.yaw, beam.pitch, beam.roll,
                                        worldSpaceYaw);
@@ -611,8 +611,16 @@ bool Install(const Dependencies& deps) {
     lean.skin = 0.0f;
     lean.release_smoothing = deps.config->collision_release_smoothing;
     g_leanClamp.SetSettings(lean);
-    lean_trace::SetRadius(deps.config->collision_radius);
-    lean_trace::SetChannel(deps.config->collision_channel);
+    lean_trace::SetRadius(deps.config->collision_margin);
+    // The canonical row passes the channel through unchecked, and the sweep
+    // writes it into a one-byte ETraceTypeQuery, whose channels are 0 to 31.
+    int channel = deps.config->collision_channel;
+    if (channel < 0 || channel > 31) {
+        Log::Line("config: [Position] CollisionChannel=%d is not one of the game's trace channels "
+                  "(0 to 31) - the wall check uses channel 0", channel);
+        channel = 0;
+    }
+    lean_trace::SetChannel(channel);
     aim_trace::SetTraceChannel(deps.config->aim_trace_channel);
 
     auto& hm = cameraunlock::hooks::HookManager::Instance();

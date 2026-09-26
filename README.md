@@ -68,8 +68,8 @@ From the extracted ZIP:
    here.
 2. Copy `plugins\SubliminalHeadTracking.asi` into the same folder.
 
-`HeadTracking.ini` and `HeadTracking.log` are written to that folder on first
-launch.
+`CameraUnlock.ini`, the mod's settings file, and `HeadTracking.log` are written
+to that folder on first launch.
 
 ## Setting Up OpenTrack
 
@@ -125,7 +125,9 @@ value.
 
 ## Controls
 
-Two equivalent binding sets - use whichever your keyboard has:
+Two equivalent binding sets - use whichever your keyboard has. Both are the
+defaults of the key lists in `CameraUnlock.ini` (see Configuration), where each
+action can be given other keys:
 
 | Action              | Nav-cluster | Chord           |
 |---------------------|-------------|-----------------|
@@ -140,103 +142,188 @@ Two equivalent binding sets - use whichever your keyboard has:
 3. Rotational tracking disabled, positional tracking enabled
 4. Back to normal
 
+The tracking mode and the yaw mode are saved to `CameraUnlock.ini` the moment
+you change them, so the game starts in them next time. Toggling tracking with
+`End` lasts for the session only; whether tracking starts on is
+`EnableOnStartup`.
+
 ## Configuration
 
-`HeadTracking.ini` is written next to the game executable, in
-`Subliminal\Binaries\Win64\`, the first time the mod runs. Edit it and restart
-the game to apply.
+<!-- cameraunlock:config -->
+The mod reads its settings from `Subliminal\Binaries\Win64\CameraUnlock.ini` in the game folder, and creates the file when it starts and finds none. Edit it with any text editor.
+
+A setting set to `default` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it, and neither do earlier versions of this mod. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
+
+`Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
+
+When the mod starts and finds no `Defaults.ini`, it creates one holding the built-in values, unless Windows runs the game as a packaged app. The mod never changes `Defaults.ini` after that. Edit it with any text editor.
+
+Earlier versions of the mod kept these settings in `HeadTracking.ini`, in the same folder. The first time this version starts and finds no `CameraUnlock.ini`, it reads your settings from `HeadTracking.ini` and writes them into `CameraUnlock.ini`. It never changes `HeadTracking.ini`, and does not read it again while `CameraUnlock.ini` exists.
+
+A setting that the defaults below set to `default` is written as `default` when the value imported for it equals its default at that start, which is the value `Defaults.ini` gives it, or the built-in value where `Defaults.ini` gives none. It then follows `Defaults.ini`. Every other setting is written with the value imported for it. `RotationEnabled` and `PositionEnabled` are one setting here, the tracking mode, so both are written as `default` or neither is.
+
+Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
+
+- Reticle settings, and a key that toggled the reticle.
+- A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
+- The setting for a feature that earlier versions shipped switched off while it was untested. It now follows the mod's default.
+
+An older version of the mod reads `HeadTracking.ini` and never reads `CameraUnlock.ini`, so a setting you change after updating is not in `HeadTracking.ini`.
+
+Deleting only `CameraUnlock.ini` makes the next start read `HeadTracking.ini` again. To go back to the defaults, replace everything in `CameraUnlock.ini` with the defaults below. Every setting they set to `default` then follows `Defaults.ini`.
+
+The built-in value of each setting set to `default` below:
+
+- `UdpPort=4242`
+- `EnableOnStartup=true`
+- `WorldSpaceYaw=true`
+- `RotationEnabled=true`
+- `LocalSmoothing=0.0`
+- `RemoteSmoothing=0.15`
+- `PositionEnabled=true`
+- `PositionLimitX=0.3`
+- `PositionLimitY=0.2`
+- `PositionLimitYDown=0.2`
+- `PositionLimitZ=0.4`
+- `PositionLimitZBack=0.1`
+- `CollisionEnabled=true`
+- `CollisionReleaseSmoothing=0.9`
+- `ToggleKey=End, Ctrl+Shift+Y`
+- `CycleTrackingModeKey=PageUp, Ctrl+Shift+G`
+- `YawModeKey=PageDown, Ctrl+Shift+H`
+- `LightFollowsHead=true`
+- `LightMultiplier=1.5`
+
+With every setting at its default, the file reads:
 
 ```ini
+; Subliminal head tracking settings.
+; Comments start with ; and go on their own line. Text after a value is part of the value.
+; Hotkeys are key names such as End, PageUp or Ctrl+Shift+Y. Separate several with commas; leave empty for none.
+; A setting set to default takes its value from Defaults.ini, which every head tracking mod
+; that keeps its settings in CameraUnlock.ini reads: %AppData%\CameraUnlock\Defaults.ini on
+; Windows, $XDG_CONFIG_HOME/CameraUnlock/Defaults.ini (normally ~/.config/CameraUnlock) on
+; Linux, under Wine and Proton too, and ~/Library/Application Support/CameraUnlock/Defaults.ini
+; on macOS. The log names the file it read. Write a value instead of default to change that
+; setting for this game only.
+
+[CameraUnlock]
+; Written by the mod. Leave this section in place.
+ConfigFormat=1
+
 [Network]
-UdpPort=4242
+; UDP port the mod receives tracker data on (OpenTrack protocol).
+UdpPort=default
 
 [General]
-EnableOnStartup=1
-; Yaw mode: 1 = horizon-locked yaw (default), 0 = camera-local yaw.
-; Page Down (or Ctrl+Shift+H) toggles it in game.
-WorldSpaceYaw=1
+; true: head tracking is on when the game starts. ToggleKey turns it on and off.
+EnableOnStartup=default
+; true: yaw turns around the world's up axis. false: around the camera's own up axis.
+WorldSpaceYaw=default
+; true: turning your head turns the view.
+; Tracking mode at startup, with PositionEnabled. The mode hotkey changes both.
+RotationEnabled=default
 
-[Rotation]
-YawSensitivity=1.0
-PitchSensitivity=1.0
-RollSensitivity=1.0
-InvertYaw=0
-InvertPitch=0
-InvertRoll=0
-; Smoothing 0.0 (responsive) - 1.0 (heavy). Covers rotation and position.
-; The value is picked per connection from the packet source address:
-; LocalSmoothing for a tracker sending from this PC over loopback
-; (127.0.0.1), RemoteSmoothing for anything else - including a tracker on
-; this same PC that sends to the machine's LAN address instead.
-LocalSmoothing=0.0
-RemoteSmoothing=0.15
+[Smoothing]
+; Smoothing when the tracker runs on this PC. 0 is the least, 1 the most.
+LocalSmoothing=default
+; Smoothing when the tracker is another device on the network, such as a phone.
+; 0 is the least, 1 the most.
+RemoteSmoothing=default
 
 [Position]
-Enabled=1
-SensitivityX=1.0
-SensitivityY=1.0
-SensitivityZ=1.0
-LimitX=0.30
-LimitY=0.20
-LimitYDown=0.20
-LimitZ=0.40
-LimitZBack=0.10
-
-[Collision]
-; Stop a lean putting your eye inside a wall. The mod sweeps the game's
-; own collision from where the camera really is towards where your head
-; asks it to go, and cuts the lean to whatever the room leaves.
-CollisionEnabled=1
-; How far off a surface the eye is held, in centimetres.
-CollisionRadius=20
-; Which trace channel level geometry blocks (ETraceTypeQuery index).
-CollisionChannel=0
-; How quickly the lean opens back up once the wall clears. 0.9 is about
-; a fifth of a second; tightening is always instant.
-CollisionReleaseSmoothing=0.90
-
-[Reticle]
-; Move the game's crosshair ring to where you are actually pointing.
-; Head tracking moves the view but not the aim, so without this the ring
-; sits at the centre of the picture and stops marking the thing you
-; would interact with.
-Enabled=1
-; How far the aim trace reaches, in centimetres.
-TraceDistance=20000
-; Which trace channel the aim ray runs on (ETraceTypeQuery index).
-TraceChannel=0
-
-[Flashlight]
-; Point the flashlight where you are looking. The game hangs the beam
-; off the mouse aim, so without this it keeps lighting whatever the
-; mouse points at while you look somewhere else.
-Enabled=1
-; How far the beam turns relative to your head. 1.5 leads the view,
-; 1.0 matches it, 0 pins the beam back on the mouse aim.
-Multiplier=1.5
+; true: moving your head moves the view.
+; Tracking mode at startup, with RotationEnabled. The mode hotkey changes both.
+PositionEnabled=default
+; How far, in metres, leaning left or right can move the view.
+PositionLimitX=default
+; How far, in metres, raising your head can move the view.
+PositionLimitY=default
+; How far, in metres, lowering your head can move the view.
+PositionLimitYDown=default
+; How far, in metres, leaning forward can move the view.
+PositionLimitZ=default
+; How far, in metres, leaning back can move the view.
+PositionLimitZBack=default
+; true: leaning stops at walls instead of moving the view through them.
+CollisionEnabled=default
+; How far, in centimetres, the view is held off a wall when you lean into it.
+; Keep it above the camera's near clip distance, or the wall is not drawn anyway.
+CollisionMargin=20.0
+; Which of the game's collision channels the wall check tests against, 0 to 31.
+; Any other number uses channel 0.
+; CollisionChannel=0
+; How gently the view eases back out after a wall stopped a lean.
+; 0 is the quickest, 1 the slowest.
+CollisionReleaseSmoothing=default
 
 [Hotkeys]
-; Virtual-key code for the yaw-mode toggle. Ctrl+Shift+H does the same
-; job and is not configurable.
-YawModeKey=0x22
+; Turns head tracking on and off.
+ToggleKey=default
+; Changes the tracking mode: rotation and position, rotation only, position only.
+CycleTrackingModeKey=default
+; Switches yaw between the world's up axis and the camera's own (WorldSpaceYaw).
+YawModeKey=default
+
+[Light]
+; true: a light you carry points where you look instead of where you aim.
+LightFollowsHead=default
+; How far the light turns for each degree your head turns.
+; 1 matches the view, 0 keeps the light on your aim.
+LightMultiplier=default
+
+[Aim]
+; How far, in centimetres, the aim trace reaches, 100 to 1000000. The trace finds
+; the point you would interact with, so the crosshair ring can sit on it.
+AimTraceDistance=20000.0
+; Which of the game's collision channels the aim trace tests against, 0 to 31.
+; AimTraceChannel=0
 
 [Dev]
-; Ctrl+Shift+U / Ctrl+Shift+J cycle which GetPlayerViewPoint caller is
-; head-tracked. Only needed to re-confirm the render caller after a
-; game patch moves it.
-InjectHotkeys=0
-; List the live UMG widgets the reticle pass could move, to HeadTracking.log.
-WidgetDump=0
+; For development. Steps which of the game's view point callers is given the head
+; pose, to find the render path again after a game patch.
+InjectNextKey=
+; For development. Steps the other way.
+InjectPreviousKey=
+; For development. true: write the game's crosshair and prompt widgets to
+; HeadTracking.log, to find them again after a game patch.
+WidgetDump=false
 ```
+<!-- /cameraunlock:config -->
 
-`[Dev]` is for re-confirming the camera hook after a game patch. Leave both at
-0 unless you are asked to change them; `InjectHotkeys=1` adds `Ctrl+Shift+U`
-and `Ctrl+Shift+J` to the bindings above.
+### Walls
 
-`CollisionRadius` must be at least 11, one centimetre clear of the engine's 10cm
-near clip distance. A smaller value is clamped up to 11 and the log says so. A
-standoff inside the near plane stops the view short of the wall and the wall is
-culled anyway, which is the same complaint with extra steps.
+`CollisionEnabled` sweeps the game's own collision from where the camera really
+is towards where your head asks it to go, and cuts the lean to whatever the room
+leaves. `CollisionMargin` is how far off a surface the view is held, in
+centimetres. Keep it above the engine's 10cm near clip distance: a standoff
+inside the near plane stops the view short of the wall and the wall is culled
+anyway. `CollisionChannel` is the collision channel the sweep tests against, 0 to
+31; a number outside that range uses channel 0 and the log says so.
+
+### The crosshair
+
+The game's crosshair ring always follows the point the mouse or controller is
+aiming at, so it keeps marking what you would interact with while your head
+moves the view. There is no setting to turn that off. Under `[Aim]`,
+`AimTraceDistance` is how far, in centimetres, the aim trace reaches, and
+`AimTraceChannel` the collision channel it tests against.
+
+### The flashlight
+
+`LightFollowsHead` points the flashlight where you are looking rather than where
+the mouse aims. `LightMultiplier` scales the head pose the beam is given. The
+default, 1.5, leads the view, because turning your head puts your eyes off the
+centre of the screen and a beam matched to the view lands short of what you are
+looking at. 1.0 moves the beam with the view, and 0 leaves it where the game
+aimed it.
+
+### Development settings
+
+`[Dev]` is for re-confirming the camera hook after a game patch. Leave it as it
+is unless you are asked to change it. `InjectNextKey` and `InjectPreviousKey`
+are unbound by default. An earlier version bound `Ctrl+Shift+U` and
+`Ctrl+Shift+J` to them with `InjectHotkeys=1`, and the import carries that over.
 
 ## Troubleshooting
 
@@ -265,8 +352,8 @@ culled anyway, which is the same complaint with extra steps.
 **Jittery or unstable tracking:**
 
 - Raise `RemoteSmoothing` for a tracker coming in over the network, or
-  `LocalSmoothing` for one sending over loopback. Both run 0.0 to 1.0 and cover
-  rotation and position.
+  `LocalSmoothing` for one sending over loopback. Both are under `[Smoothing]`
+  in `CameraUnlock.ini`, run 0.0 to 1.0 and cover rotation and position.
 - A phone app sending a raw feed direct is the usual cause. Route it through
   OpenTrack so its filters and curves clean the feed up first, or turn the app's
   own filtering up.
@@ -275,8 +362,8 @@ culled anyway, which is the same complaint with extra steps.
 
 **Wrong rotation axis:**
 
-- `InvertYaw`, `InvertPitch` and `InvertRoll` in `[Rotation]` flip an axis that
-  moves the wrong way.
+- The mod applies the pose as your tracker sends it. If an axis moves the wrong
+  way, invert it in your tracker.
 - Yaw that feels wrong only when looking hard up or down is the yaw mode rather
   than a sign. Toggle it with `Page Down` (or `Ctrl+Shift+H`). World-locked, the
   default, keeps the horizon level, so looking at the floor and turning your
@@ -285,9 +372,9 @@ culled anyway, which is the same complaint with extra steps.
 
 **Leaning puts the view through a wall:**
 
-- `[Collision] CollisionEnabled=1` sweeps the game's collision and cuts the lean
-  to what the room leaves. `CollisionRadius` is how far off a surface the view is
-  held, in centimetres.
+- `CollisionEnabled` under `[Position]` sweeps the game's collision and cuts the
+  lean to what the room leaves. `CollisionMargin` is how far off a surface the
+  view is held, in centimetres. See Walls under Configuration.
 
 **The view stops following my head in menus:**
 
@@ -298,13 +385,16 @@ culled anyway, which is the same complaint with extra steps.
 ## Updating
 
 Download the new release and run `install.cmd` again. It overwrites the payload
-and leaves `HeadTracking.ini` alone, so your settings survive.
+and leaves `CameraUnlock.ini` alone, so your settings survive. Updating from
+0.1.0 moves your settings from `HeadTracking.ini` into `CameraUnlock.ini` at the
+first start; see Configuration.
 
 ## Uninstalling
 
-Run `uninstall.cmd`. This removes the mod's files. The ASI loader is only
-removed if the installer put it there; use `uninstall.cmd /force` to remove it
-anyway.
+Run `uninstall.cmd`. This removes the mod's files. `CameraUnlock.ini`, and a
+`HeadTracking.ini` an earlier version left, stay in place so a reinstall keeps
+your settings. The ASI loader is only removed if the installer put it there; use
+`uninstall.cmd /force` to remove it anyway.
 
 ## Building from Source
 

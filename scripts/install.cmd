@@ -41,15 +41,16 @@ set "ASI_SUBDIR="
 :: Files copied only when they are not already there, so an upgrade keeps
 :: whatever the user tuned. Listing an .ini in MOD_DLLS instead puts it through
 :: the unconditional copy and resets every key on every update.
-:: Empty: the mod writes HeadTracking.ini itself on first run, so there is no
-:: default to seed.
+:: Empty: the mod creates CameraUnlock.ini itself at first launch, importing
+:: HeadTracking.ini once where an earlier version left one, so nothing in the
+:: ZIP is a config. A seeded CameraUnlock.ini would stop that import.
 set "MOD_SEED_FILES="
 :: Version of the vendored Ultimate ASI Loader, recorded in the state file so
 :: the launcher can tell which loader build it is looking at. Leave empty to
 :: omit the field. Bump alongside vendor/ via `pixi run update-deps`.
 set "ASI_LOADER_VERSION=9.7.4"
 :: Post-install help text. `&echo ` starts each further line.
-set "MOD_CONTROLS=Controls:&echo   End       - Toggle head tracking on/off&echo   Page Up   - Cycle mode: full / rotation only / position only&echo   Page Down - Toggle yaw mode (world-locked / camera-local)&echo   Ctrl+Shift+Y / G / H do the same three on keyboards with no nav cluster"
+set "MOD_CONTROLS=Controls:&echo   End or Ctrl+Shift+Y       - Toggle head tracking on/off&echo   Page Up or Ctrl+Shift+G   - Cycle mode: full / rotation only / position only&echo   Page Down or Ctrl+Shift+H - Toggle yaw mode (world-locked / camera-local)&echo   The keys are set in CameraUnlock.ini beside the game exe."
 :: --- END CONFIG BLOCK ---
 
 :: Pin delayed expansion off before `%*` is expanded on the `call` below.

@@ -3,163 +3,244 @@
 
 #include "config.h"
 
-#include <cstdio>
+#include <functional>
+#include <memory>
+#include <stdexcept>
 #include <string>
-#include <windows.h>
+#include <utility>
+#include <vector>
 
 #include "legacy_config/legacy_config.h"
 #include "logging.h"
 
-namespace subliminal_ht {
+#include "cameraunlock/config/hotkey_codec.h"
+#include "cameraunlock/config/value_codecs.h"
+#include "cameraunlock/input/key_bindings.h"
+
+namespace subliminal_ht::config {
 
 namespace {
 
-constexpr const char* kIniName = "HeadTracking.ini";
+namespace cfg = ::cameraunlock::config;
+using cfg::schema::Concept;
+using ::cameraunlock::input::FormatKeyBindings;
+using ::cameraunlock::input::KeyModifiers;
 
-std::string ini_path(const std::string& exe_dir) {
-    return exe_dir + "\\" + kIniName;
+constexpr const wchar_t* kIniName = L"CameraUnlock.ini";
+constexpr const wchar_t* kLegacyIniName = L"HeadTracking.ini";
+
+// data/games.json's display_name for subliminal.
+constexpr const char* kDisplayName = "Subliminal";
+
+// The aim trace's reach, the bounds every earlier build held it to.
+constexpr double kMinAimTraceDistance = 100.0;
+constexpr double kMaxAimTraceDistance = 1000000.0;
+
+// ETraceTypeQuery is TraceTypeQuery1..TraceTypeQuery32.
+constexpr int kMaxTraceChannel = 31;
+
+constexpr KeyModifiers kChord = KeyModifiers::kCtrl | KeyModifiers::kShift;
+
+// The keys every build before the canonical format bound in code rather than in
+// the file.
+constexpr int kVkEnd = 0x23;
+constexpr int kVkPageUp = 0x21;
+constexpr int kVkY = 0x59;
+constexpr int kVkG = 0x47;
+constexpr int kVkH = 0x48;
+constexpr int kVkU = 0x55;
+constexpr int kVkJ = 0x4A;
+
+std::unique_ptr<cfg::ConfigOwner<Config>> g_owner;
+
+void Save(const char* rows, const std::function<void(Config&)>& change) {
+    // No owner when the bootstrap could not read the game's folder.
+    if (!g_owner) {
+        Log::Line("config: %s not saved: CameraUnlock.ini has no known folder this session", rows);
+        return;
+    }
+    const cfg::ConfigSaveResult result = g_owner->Save(change);
+    if (result.status != cfg::ConfigSaveStatus::Saved) {
+        Log::Line("config: %s %s: %s", rows, cfg::ConfigSaveStatusName(result.status), result.reason.c_str());
+    }
+    for (const std::string& line : result.log) Log::Line("config: %s", line.c_str());
+}
+
+cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
+    // Every earlier build opened HeadTracking.ini by its ANSI path, and the
+    // frozen reader does the same. Where it finds no file, the published build
+    // ran on its defaults.
+    legacy::Config read;
+    const bool present = legacy::Load(input.ansi_path, read);
+
+    std::vector<cfg::DroppedValue> dropped;
+    std::vector<cfg::PoseShapingValue> pose_shaping;
+
+    // Every sensitivity and inversion shipped at identity, and the position
+    // offset is already converted to the game's centimetres in code, so nothing
+    // folds: the mod applies the pose as the tracker sends it, and a value the
+    // player changed is dropped.
+    const auto shaping = [&](auto value, auto shipped, const char* section, const char* key) {
+        cfg::LegacyPoseShaping(value, shipped, section, key, pose_shaping, dropped);
+    };
+    shaping(read.yaw_sensitivity, 1.0f, "Rotation", "YawSensitivity");
+    shaping(read.pitch_sensitivity, 1.0f, "Rotation", "PitchSensitivity");
+    shaping(read.roll_sensitivity, 1.0f, "Rotation", "RollSensitivity");
+    shaping(read.invert_yaw, false, "Rotation", "InvertYaw");
+    shaping(read.invert_pitch, false, "Rotation", "InvertPitch");
+    shaping(read.invert_roll, false, "Rotation", "InvertRoll");
+    shaping(read.position_sensitivity_x, 1.0f, "Position", "SensitivityX");
+    shaping(read.position_sensitivity_y, 1.0f, "Position", "SensitivityY");
+    shaping(read.position_sensitivity_z, 1.0f, "Position", "SensitivityZ");
+
+    // The reader keeps the port inside 1024-65535, every float finite and inside
+    // a range the canonical rows hold, and both trace channels inside 0-31, so
+    // each carries over as it is.
+    out.udp_port = read.udp_port;
+    out.enable_on_startup = read.enable_on_startup;
+    out.world_space_yaw = read.world_space_yaw;
+    out.local_smoothing = read.local_smoothing;
+    out.remote_smoothing = read.remote_smoothing;
+    out.position_limit_x = read.limit_x;
+    out.position_limit_y = read.limit_y;
+    out.position_limit_y_down = read.limit_y_down;
+    out.position_limit_z = read.limit_z;
+    out.position_limit_z_back = read.limit_z_back;
+    out.collision_enabled = read.collision_enabled;
+    out.collision_margin = read.collision_radius;
+    out.collision_channel = read.collision_channel;
+    out.collision_release_smoothing = read.collision_release_smoothing;
+    out.aim_trace_distance = read.aim_trace_distance;
+    out.aim_trace_channel = read.aim_trace_channel;
+    out.light_follows_head = read.flashlight_follows_head;
+    out.light_multiplier = read.flashlight_multiplier;
+    out.widget_dump = read.widget_dump;
+
+    // [Position] Enabled chose the startup mode and nothing else: the cycle
+    // reached every mode either way.
+    const cameraunlock::TrackingModeChannels channels = cameraunlock::EncodeTrackingMode(
+        read.position_enabled ? cameraunlock::TrackingMode::RotationAndPosition
+                              : cameraunlock::TrackingMode::RotationOnly);
+    out.rotation_enabled = channels.rotation_enabled;
+    out.position_enabled = channels.position_enabled;
+
+    // The crosshair ring now always follows the aim (approved change reticle).
+    if (!read.reticle_follows_aim) dropped.push_back({cfg::DropRule::Reticle, "Reticle", "Enabled", "false"});
+
+    // End, Page Up and the Ctrl+Shift chords were bound in code; only the yaw
+    // key was in the file, and the reader keeps it bindable. The inject-mode
+    // chords were bound only with [Dev] InjectHotkeys on.
+    out.toggle_key = FormatKeyBindings({{KeyModifiers::kNone, kVkEnd}, {kChord, kVkY}});
+    out.cycle_tracking_mode_key = FormatKeyBindings({{KeyModifiers::kNone, kVkPageUp}, {kChord, kVkG}});
+    out.yaw_mode_key = cfg::LegacyVirtualKeyToBindings(read.yaw_mode_key, "Hotkeys", "YawModeKey", dropped) + ", " +
+                       FormatKeyBindings({{kChord, kVkH}});
+    out.inject_next_key = read.inject_hotkeys ? FormatKeyBindings({{kChord, kVkU}}) : std::string();
+    out.inject_previous_key = read.inject_hotkeys ? FormatKeyBindings({{kChord, kVkJ}}) : std::string();
+
+    return present ? cfg::ImportResult::Imported(std::move(dropped), std::move(pose_shaping))
+                   : cfg::ImportResult::Absent(std::move(dropped), std::move(pose_shaping));
 }
 
 }  // namespace
 
-void config_load(const std::string& exe_dir, Config& out) {
-    legacy::Config read;
-    legacy::Load(ini_path(exe_dir), read);
-
-    out.udp_port = read.udp_port;
-    out.enable_on_startup = read.enable_on_startup;
-    out.world_space_yaw = read.world_space_yaw;
-    out.yaw_sensitivity = read.yaw_sensitivity;
-    out.pitch_sensitivity = read.pitch_sensitivity;
-    out.roll_sensitivity = read.roll_sensitivity;
-    out.invert_yaw = read.invert_yaw;
-    out.invert_pitch = read.invert_pitch;
-    out.invert_roll = read.invert_roll;
-    out.local_smoothing = read.local_smoothing;
-    out.remote_smoothing = read.remote_smoothing;
-    out.position_enabled = read.position_enabled;
-    out.position_sensitivity_x = read.position_sensitivity_x;
-    out.position_sensitivity_y = read.position_sensitivity_y;
-    out.position_sensitivity_z = read.position_sensitivity_z;
-    out.limit_x = read.limit_x;
-    out.limit_y = read.limit_y;
-    out.limit_y_down = read.limit_y_down;
-    out.limit_z = read.limit_z;
-    out.limit_z_back = read.limit_z_back;
-    out.collision_enabled = read.collision_enabled;
-    out.collision_radius = read.collision_radius;
-    out.collision_channel = read.collision_channel;
-    out.collision_release_smoothing = read.collision_release_smoothing;
-    out.reticle_follows_aim = read.reticle_follows_aim;
-    out.aim_trace_distance = read.aim_trace_distance;
-    out.aim_trace_channel = read.aim_trace_channel;
-    out.flashlight.follows_head = read.flashlight_follows_head;
-    out.flashlight.multiplier = read.flashlight_multiplier;
-    out.yaw_mode_key = read.yaw_mode_key;
-    out.inject_hotkeys = read.inject_hotkeys;
-    out.widget_dump = read.widget_dump;
+cfg::ConfigTable<Config> Table() {
+    cfg::ConfigTable<Config> table;
+    table.Concept<Concept::UdpPort>(&Config::udp_port)
+        .Concept<Concept::EnableOnStartup>(&Config::enable_on_startup)
+        .Concept<Concept::WorldSpaceYaw>(&Config::world_space_yaw)
+        .Writable()
+        .Concept<Concept::RotationEnabled>(&Config::rotation_enabled)
+        .Writable()
+        .Concept<Concept::LocalSmoothing>(&Config::local_smoothing)
+        .Concept<Concept::RemoteSmoothing>(&Config::remote_smoothing)
+        .Concept<Concept::PositionEnabled>(&Config::position_enabled)
+        .Writable()
+        .Concept<Concept::PositionLimitX>(&Config::position_limit_x)
+        .Concept<Concept::PositionLimitY>(&Config::position_limit_y)
+        .Concept<Concept::PositionLimitYDown>(&Config::position_limit_y_down)
+        .Concept<Concept::PositionLimitZ>(&Config::position_limit_z)
+        .Concept<Concept::PositionLimitZBack>(&Config::position_limit_z_back)
+        .Concept<Concept::CollisionEnabled>(&Config::collision_enabled)
+        .Concept<Concept::CollisionMargin>(&Config::collision_margin)
+        .Comment("How far, in centimetres, the view is held off a wall when you lean into it.\n"
+                 "Keep it above the camera's near clip distance, or the wall is not drawn anyway.")
+        .Concept<Concept::CollisionChannel>(&Config::collision_channel)
+        .Comment("Which of the game's collision channels the wall check tests against, 0 to 31.\n"
+                 "Any other number uses channel 0.")
+        .Engine()
+        .Concept<Concept::CollisionReleaseSmoothing>(&Config::collision_release_smoothing)
+        .Concept<Concept::ToggleKey>(&Config::toggle_key)
+        .Concept<Concept::CycleTrackingModeKey>(&Config::cycle_tracking_mode_key)
+        .Concept<Concept::YawModeKey>(&Config::yaw_mode_key)
+        .Concept<Concept::LightFollowsHead>(&Config::light_follows_head)
+        .Concept<Concept::LightMultiplier>(&Config::light_multiplier)
+        .Local("Aim", "AimTraceDistance", &Config::aim_trace_distance, cfg::FloatCodec(),
+               "How far, in centimetres, the aim trace reaches, 100 to 1000000. The trace finds\n"
+               "the point you would interact with, so the crosshair ring can sit on it.")
+        .Range(kMinAimTraceDistance, kMaxAimTraceDistance)
+        .Local("Aim", "AimTraceChannel", &Config::aim_trace_channel, cfg::IntCodec<int>(0, kMaxTraceChannel),
+               "Which of the game's collision channels the aim trace tests against, 0 to 31.")
+        .Engine()
+        .Local("Dev", "InjectNextKey", &Config::inject_next_key, cfg::HotkeyCodec(),
+               "For development. Steps which of the game's view point callers is given the head\n"
+               "pose, to find the render path again after a game patch.")
+        .Local("Dev", "InjectPreviousKey", &Config::inject_previous_key, cfg::HotkeyCodec(),
+               "For development. Steps the other way.")
+        .Local("Dev", "WidgetDump", &Config::widget_dump, cfg::BoolCodec(),
+               "For development. true: write the game's crosshair and prompt widgets to\n"
+               "HeadTracking.log, to find them again after a game patch.");
+    return table;
 }
 
-void config_write_default_if_missing(const std::string& exe_dir) {
-    const std::string p = ini_path(exe_dir);
-    if (GetFileAttributesA(p.c_str()) != INVALID_FILE_ATTRIBUTES) return;
-
-    FILE* f = nullptr;
-    const errno_t err = fopen_s(&f, p.c_str(), "w");
-    if (!f) {
-        // Not fatal - the shipped defaults are the same numbers this file would
-        // have carried - but it has to be said, because the symptom otherwise is
-        // a mod with no settings file next to it and no reason given.
-        Log::Line("config: could not create %s (errno %d). The built-in defaults are in "
-                  "use, and settings cannot be changed until this path is writable.",
-                  p.c_str(), static_cast<int>(err));
-        return;
-    }
-    std::fprintf(f,
-        "; Subliminal Head Tracking - configuration\n"
-        "; Edit values, restart the game to apply.\n\n"
-        "[Network]\n"
-        "UdpPort=%d\n\n"
-        "[General]\n"
-        "EnableOnStartup=1\n"
-        "; Yaw mode: 1 = horizon-locked yaw (default), 0 = camera-local yaw.\n"
-        "; Page Down (or Ctrl+Shift+H) toggles it in game.\n"
-        "WorldSpaceYaw=1\n\n"
-        "[Rotation]\n"
-        "YawSensitivity=1.0\n"
-        "PitchSensitivity=1.0\n"
-        "RollSensitivity=1.0\n"
-        "InvertYaw=0\n"
-        "InvertPitch=0\n"
-        "InvertRoll=0\n"
-        "; Smoothing 0.0 (responsive) - 1.0 (heavy). Covers rotation and position.\n"
-        "; The value is picked per connection from the packet source address:\n"
-        "; LocalSmoothing for a tracker sending from this PC over loopback\n"
-        "; (127.0.0.1), RemoteSmoothing for anything else - including a tracker on\n"
-        "; this same PC that sends to the machine's LAN address instead.\n"
-        "LocalSmoothing=0.0\n"
-        "RemoteSmoothing=0.15\n\n"
-        "[Position]\n"
-        "Enabled=1\n"
-        "SensitivityX=1.0\n"
-        "SensitivityY=1.0\n"
-        "SensitivityZ=1.0\n"
-        "LimitX=0.30\n"
-        "LimitY=0.20\n"
-        "LimitYDown=%.2f\n"
-        "LimitZ=0.40\n"
-        "LimitZBack=0.10\n\n"
-        "[Collision]\n"
-        "; Stop a lean putting your eye inside a wall. The mod sweeps the game's\n"
-        "; own collision from where the camera really is towards where your head\n"
-        "; asks it to go, and cuts the lean to whatever the room leaves.\n"
-        "CollisionEnabled=%d\n"
-        "; How far off a surface the eye is held, in centimetres.\n"
-        "CollisionRadius=%.0f\n"
-        "; Which trace channel level geometry blocks (ETraceTypeQuery index).\n"
-        "CollisionChannel=%d\n"
-        "; How quickly the lean opens back up once the wall clears. 0.9 is about\n"
-        "; a fifth of a second; tightening is always instant.\n"
-        "CollisionReleaseSmoothing=%.2f\n\n"
-        "[Reticle]\n"
-        "; Move the game's crosshair ring to where you are actually pointing.\n"
-        "; Head tracking moves the view but not the aim, so without this the ring\n"
-        "; sits at the centre of the picture and stops marking the thing you\n"
-        "; would interact with.\n"
-        "Enabled=1\n"
-        "; How far the aim trace reaches, in centimetres.\n"
-        "TraceDistance=20000\n"
-        "; Which trace channel the aim ray runs on (ETraceTypeQuery index).\n"
-        "TraceChannel=%d\n\n"
-        "[Flashlight]\n"
-        "; Point the flashlight where you are looking. The game hangs the beam\n"
-        "; off the mouse aim, so without this it keeps lighting whatever the\n"
-        "; mouse points at while you look somewhere else.\n"
-        "Enabled=1\n"
-        "; How far the beam turns relative to your head. 1.5 leads the view,\n"
-        "; 1.0 matches it, 0 pins the beam back on the mouse aim.\n"
-        "Multiplier=%.1f\n\n"
-        "[Hotkeys]\n"
-        "; Virtual-key code for the yaw-mode toggle. Ctrl+Shift+H does the same\n"
-        "; job and is not configurable.\n"
-        "YawModeKey=0x%02X\n\n"
-        "[Dev]\n"
-        "; Ctrl+Shift+U / Ctrl+Shift+J cycle which GetPlayerViewPoint caller is\n"
-        "; head-tracked. Only needed to re-confirm the render caller after a\n"
-        "; game patch moves it.\n"
-        "InjectHotkeys=0\n"
-        "; List the live UMG widgets the reticle pass could move, to HeadTracking.log.\n"
-        "WidgetDump=0\n",
-        Config{}.udp_port,
-        static_cast<double>(cameraunlock::PositionSettings{}.limit_y_down),
-        Config{}.collision_enabled ? 1 : 0,
-        static_cast<double>(Config{}.collision_radius),
-        Config{}.collision_channel,
-        static_cast<double>(Config{}.collision_release_smoothing),
-        Config{}.aim_trace_channel,
-        static_cast<double>(Config{}.flashlight.multiplier),
-        kDefaultYawModeKey);
-    std::fclose(f);
+cfg::RenderHeader Header() {
+    cfg::RenderHeader header;
+    header.display_name = kDisplayName;
+    return header;
 }
 
-}  // namespace subliminal_ht
+cfg::LegacyImport<Config> Import() {
+    cfg::LegacyImport<Config> import;
+    import.run = &RunImport;
+    for (const legacy::Key& key : legacy::ReadKeys()) import.keys.push_back({key.section, key.key});
+    return import;
+}
+
+cfg::ConfigOwnerOptions<Config> OwnerOptions(const std::wstring& exe_dir, cfg::DefaultsFile defaults) {
+    cfg::ConfigOwnerOptions<Config> options;
+    options.path = exe_dir + L"\\" + kIniName;
+    options.table = Table();
+    options.import = Import();
+    options.legacy_path = exe_dir + L"\\" + kLegacyIniName;
+    options.header = Header();
+    options.defaults = std::move(defaults);
+    return options;
+}
+
+Config Load(const std::wstring& exe_dir, cfg::DefaultsFile defaults) {
+    g_owner = std::make_unique<cfg::ConfigOwner<Config>>(OwnerOptions(exe_dir, std::move(defaults)));
+    const cfg::ConfigLoadResult<Config> result = g_owner->Load();
+    for (const std::string& line : result.log) Log::Line("config: %s", line.c_str());
+    if (!result.reason.empty()) Log::Line("config: %s", result.reason.c_str());
+    Log::Line("config: %s", cfg::ConfigLoadStatusName(result.status));
+    return result.config;
+}
+
+cameraunlock::TrackingMode StartupTrackingMode(const Config& config) {
+    const auto mode = cameraunlock::DecodeTrackingMode(config.rotation_enabled, config.position_enabled);
+    if (!mode) throw std::logic_error("RotationEnabled and PositionEnabled are both false, which the table never gives");
+    return *mode;
+}
+
+void SaveWorldSpaceYaw(bool world_space_yaw) {
+    Save("[General] WorldSpaceYaw", [world_space_yaw](Config& c) { c.world_space_yaw = world_space_yaw; });
+}
+
+void SaveTrackingMode(cameraunlock::TrackingMode mode) {
+    const cameraunlock::TrackingModeChannels channels = cameraunlock::EncodeTrackingMode(mode);
+    Save("[General] RotationEnabled and [Position] PositionEnabled", [channels](Config& c) {
+        c.rotation_enabled = channels.rotation_enabled;
+        c.position_enabled = channels.position_enabled;
+    });
+}
+
+}  // namespace subliminal_ht::config

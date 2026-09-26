@@ -82,9 +82,9 @@ struct OffsetTable {
 
     // Default inject mode at startup. 0 = all callers (diagnostic only),
     // 1..16 = inject only for kKnownCallerRvas[mode-1] (the render-path
-    // caller / FMinimalViewInfo builder), 17 = none. Ctrl+Shift+U /
-    // Ctrl+Shift+J cycle this live so the render caller can be re-confirmed
-    // in game after a patch without a rebuild.
+    // caller / FMinimalViewInfo builder), 17 = none. [Dev] InjectNextKey
+    // and InjectPreviousKey step it live so the render caller can be
+    // re-confirmed in game after a patch without a rebuild.
     int kDefaultInjectMode;
 
     // FMinimalViewInfo field offsets. The render caller is
