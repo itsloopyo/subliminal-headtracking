@@ -28,7 +28,8 @@ build = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
 build-debug = { cmd = "cmake --build build --config Debug", depends-on = ["setup"] }
 
 # Behaviour locks for the camera boundary, the reticle projection and the
-# caller gate.
+# caller gate, the config tests, and the config differential test, which holds
+# the frozen HeadTracking.ini reader to v0.1.0's. Needs no game install.
 test = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build"] }
 
 clean = { cmd = """
@@ -61,4 +62,7 @@ install = { depends-on = ["deploy"] }
 uninstall = 'cmd /c scripts\uninstall.cmd'
 
 [dependencies]
-# No pixi-managed deps - relies on system CMake + Visual Studio.
+# CMake and Visual Studio come from the system. Packaging runs core's config
+# descriptor check (Copy-SharedBundle) with node. Pinned to the release core's
+# own lock resolves.
+nodejs = "==26.5.0"

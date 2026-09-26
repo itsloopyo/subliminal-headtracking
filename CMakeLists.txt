@@ -77,6 +77,7 @@ set(MOD_SOURCES
     src/ue_reflect.cpp
     src/ue_vm.cpp
     src/config.cpp
+    src/legacy_config/legacy_config.cpp
     src/builds/build_registry.cpp
     src/builds/steam_offsets.cpp
 )
@@ -147,6 +148,7 @@ if(SUBLIMINAL_BUILD_TESTS)
     add_executable(subliminal_config_tests
         tests/config_tests.cpp
         src/config.cpp
+        src/legacy_config/legacy_config.cpp
     )
     target_include_directories(subliminal_config_tests PRIVATE
         src
@@ -168,4 +170,67 @@ if(SUBLIMINAL_BUILD_TESTS)
     target_link_libraries(subliminal_udp_recovery_tests PRIVATE cameraunlock ws2_32)
     target_compile_options(subliminal_udp_recovery_tests PRIVATE ${SUBLIMINAL_WARNINGS})
     add_test(NAME subliminal_udp_recovery_tests COMMAND subliminal_udp_recovery_tests)
+
+    # The canonical config conversion's differential test: v0.1.0's reader
+    # (byte copies in tests/config_differential/oracle/src) and startup code
+    # against the frozen reader in src/legacy_config/.
+    set(SUBLIMINAL_DIFFERENTIAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential)
+    add_executable(subliminal_config_differential
+        ${SUBLIMINAL_DIFFERENTIAL_DIR}/differential_tests.cpp
+        ${SUBLIMINAL_DIFFERENTIAL_DIR}/oracle/oracle_reader.cpp
+        src/legacy_config/legacy_config.cpp
+    )
+    target_include_directories(subliminal_config_differential PRIVATE
+        src
+        ${SUBLIMINAL_DIFFERENTIAL_DIR}
+        cameraunlock-core/cpp/include
+    )
+    target_compile_definitions(subliminal_config_differential PRIVATE
+        SUBLIMINAL_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    target_link_libraries(subliminal_config_differential PRIVATE cameraunlock)
+    target_compile_options(subliminal_config_differential PRIVATE ${SUBLIMINAL_WARNINGS})
+    add_test(NAME subliminal_config_differential COMMAND subliminal_config_differential)
+
+    # What the differential test compiles is pinned by hash, line endings aside:
+    # the oracle's byte copies must stay v0.1.0's (git show v0.1.0:src/<file>),
+    # the core sources both readers compile must hold the code v0.1.0 was built
+    # with (core 665a345), and the frozen reader is never edited.
+    function(subliminal_require_hash path expected)
+        file(READ "${path}" text)
+        string(REPLACE "\r" "" text "${text}")
+        string(SHA256 actual "${text}")
+        if(NOT actual STREQUAL expected)
+            message(FATAL_ERROR "${path} has changed (SHA-256 of its text ${actual}, pinned "
+                                "${expected}). The config differential test compares against "
+                                "exactly this file; see CMakeLists.txt.")
+        endif()
+    endfunction()
+    set(SUBLIMINAL_CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cameraunlock-core/cpp)
+    foreach(pinned
+            "${SUBLIMINAL_DIFFERENTIAL_DIR}/oracle/src/config.cpp|bec94b8b52124937e168307dcf2e0f89a929a113787ffa40eb7dded69d414572"
+            "${SUBLIMINAL_DIFFERENTIAL_DIR}/oracle/src/config.h|ff8f034029b28b14bc5670a7209a486fc595b0abd11bdfc16c4eb4d419ded84a"
+            "${SUBLIMINAL_DIFFERENTIAL_DIR}/oracle/src/logging.h|f034169712d24f324da281174b9ce169f3064a96457d10d0ca248291dbec1223"
+            "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/config/ini_reader.h|a7ffb44210ff59672fa97e8e5feaa2cb3e81938fcc0334a384c68bc371b3857a"
+            "${SUBLIMINAL_CORE_DIR}/src/config/ini_reader.cpp|e01515c2656aaf533bae4350dc45b702c3e3d4043935743dcc9bd5ea581fbe1c"
+            "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/config/value_guards.h|6d3e3512bdfc9ac2a54bee750c5425191bdb4c24f3ae2ea3b9925612e01c78e5"
+            "${SUBLIMINAL_CORE_DIR}/src/config/value_guards.cpp|a833ff7f2721f7974ce039a3597349a0974e6695ce3e75e598ce5bf4985a14b1"
+            "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/math/finite_utils.h|c59772d698d54ade3374ee1221b74f5563a86d76f0eb34a989ef7efab389c0ad"
+            "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/protocol/port_utils.h|91bff564d5e279b66527ec5553afcf4d591812dab0e78f71a48ef412e4db7a44"
+            "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/logging/file_log.h|43bdd2ef8554c78e5f440333463750c13b95110fe672b0b6e273244df9e7d169"
+            "${SUBLIMINAL_CORE_DIR}/src/logging/file_log.cpp|73c53c2baa06bbfebe8211f62678aa2b60cb95f604743d3686951ba56b87ea47"
+            "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/camera/lean_clamp.h|a53cf2d4c0060643d2cec5308f0f979bf5868c4f892a62c9bbe4572c427c2a8b"
+            "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/data/position_settings.h|b24dceb8e25475aebc5a468a5c7362a4a4e64204d183d1408525345f32f547f5"
+            "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/effects/head_follow_light.h|975470cfa10cb5c00689a2fc5aa31c82fef151a2a607212b21dd371895b0589f"
+            "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/math/smoothing_utils.h|fc2146f8c585e5f610c7234e302f59de4945679cfa28ff479ca47477ec073f22"
+            "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/math/vec3.h|021c45902da44d12911a7cacd9b76fa28775b382583dca2e5e9df3888e242683"
+            "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/math/angle_utils.h|d7a905270933e3cb0c4c361d29d3fd701655498cbcd1875ea79d180468bdbe6a"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/legacy_config/legacy_config.h|def85ceeefcb505c7597260dd4cf4a5c2805239f60cd5aec5bba813d08242187"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/legacy_config/legacy_config.cpp|3fdebe7106e160c6100885851a401a6594247d4be64a1bf18c816ccd45a38292")
+        string(REPLACE "|" ";" pair "${pinned}")
+        list(GET pair 0 pinned_path)
+        list(GET pair 1 pinned_hash)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${pinned_path}")
+        subliminal_require_hash("${pinned_path}" "${pinned_hash}")
+    endforeach()
 endif()

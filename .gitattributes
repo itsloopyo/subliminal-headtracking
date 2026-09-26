@@ -7,3 +7,4 @@
 *.gif binary
 *.zip binary
 *.dll binary
+tests/config_differential/data/** -text

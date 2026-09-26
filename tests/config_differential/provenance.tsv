@@ -1,0 +1,36 @@
+# What the differential test compares, and where each file came from.
+# Columns: role, source (commit:path, or the path in this repo), sha256 of the text with CR removed.
+# v0.1.0 (commit 68b0863, tag object 10a21c8) is the only published build. No rolling dev
+# pre-release was published, and no predecessor repo shipped this mod. No release ZIP or launcher
+# manifest shipped or seeded a HeadTracking.ini: every player's file is the one
+# config_write_default_if_missing wrote on the first run, edited or not.
+# The reader was frozen at bf04d3e, whose src/ is v0.1.0's byte for byte; only the core pin moved
+# (665a345 to 3f3a821). Every core source either reader compiles holds the same bytes at both pins
+# except cameraunlock/effects/head_follow_light.h, where one comment changed, so comparison 1
+# finds no difference.
+published reader	v0.1.0:src/config.cpp, compiled as tests/config_differential/oracle/src/config.cpp	bec94b8b52124937e168307dcf2e0f89a929a113787ffa40eb7dded69d414572
+published reader	v0.1.0:src/config.h, compiled as tests/config_differential/oracle/src/config.h	ff8f034029b28b14bc5670a7209a486fc595b0abd11bdfc16c4eb4d419ded84a
+published reader	v0.1.0:src/logging.h, compiled as tests/config_differential/oracle/src/logging.h	f034169712d24f324da281174b9ce169f3064a96457d10d0ca248291dbec1223
+published startup	v0.1.0:src/headtracking_mod.cpp, transcribed in tests/config_differential/oracle/oracle_reader.cpp	f8064109ff42431f8e04171c55fde87e462bbebd1394ec431994d62375dd2fac
+published startup	v0.1.0:src/mod_hotkeys.cpp, transcribed in tests/config_differential/oracle/oracle_reader.cpp	99911d82fbd92035362f7b847eb9c627da2370730b2b87dbfce04674da01abf5
+published startup	v0.1.0:src/view_hook.cpp, transcribed in tests/config_differential/oracle/oracle_reader.cpp	ef0219accbc59fd9af39e59686470474165100abcdc27ade7ee17fb0cedd6380
+published core source	cameraunlock-core 665a345:cpp/include/cameraunlock/config/ini_reader.h	a7ffb44210ff59672fa97e8e5feaa2cb3e81938fcc0334a384c68bc371b3857a
+published core source	cameraunlock-core 665a345:cpp/src/config/ini_reader.cpp	e01515c2656aaf533bae4350dc45b702c3e3d4043935743dcc9bd5ea581fbe1c
+published core source	cameraunlock-core 665a345:cpp/include/cameraunlock/config/value_guards.h	6d3e3512bdfc9ac2a54bee750c5425191bdb4c24f3ae2ea3b9925612e01c78e5
+published core source	cameraunlock-core 665a345:cpp/src/config/value_guards.cpp	a833ff7f2721f7974ce039a3597349a0974e6695ce3e75e598ce5bf4985a14b1
+published core source	cameraunlock-core 665a345:cpp/include/cameraunlock/math/finite_utils.h	c59772d698d54ade3374ee1221b74f5563a86d76f0eb34a989ef7efab389c0ad
+published core source	cameraunlock-core 665a345:cpp/include/cameraunlock/protocol/port_utils.h	91bff564d5e279b66527ec5553afcf4d591812dab0e78f71a48ef412e4db7a44
+published core source	cameraunlock-core 665a345:cpp/include/cameraunlock/logging/file_log.h	43bdd2ef8554c78e5f440333463750c13b95110fe672b0b6e273244df9e7d169
+published core source	cameraunlock-core 665a345:cpp/src/logging/file_log.cpp	73c53c2baa06bbfebe8211f62678aa2b60cb95f604743d3686951ba56b87ea47
+published core source	cameraunlock-core 665a345:cpp/include/cameraunlock/camera/lean_clamp.h	a53cf2d4c0060643d2cec5308f0f979bf5868c4f892a62c9bbe4572c427c2a8b
+published core source	cameraunlock-core 665a345:cpp/include/cameraunlock/data/position_settings.h	b24dceb8e25475aebc5a468a5c7362a4a4e64204d183d1408525345f32f547f5
+published core source	cameraunlock-core 665a345:cpp/include/cameraunlock/effects/head_follow_light.h	05c1af3befc789e7dfc665c459ee026cdd94c7a9286a805cd20f77c21606b24c
+published core source	cameraunlock-core 665a345:cpp/include/cameraunlock/math/smoothing_utils.h	fc2146f8c585e5f610c7234e302f59de4945679cfa28ff479ca47477ec073f22
+published core source	cameraunlock-core 665a345:cpp/include/cameraunlock/math/vec3.h	021c45902da44d12911a7cacd9b76fa28775b382583dca2e5e9df3888e242683
+published core source	cameraunlock-core 665a345:cpp/include/cameraunlock/math/angle_utils.h	d7a905270933e3cb0c4c361d29d3fd701655498cbcd1875ea79d180468bdbe6a
+current core source	cameraunlock-core 3f3a821:cpp/include/cameraunlock/effects/head_follow_light.h, a comment naming zoom compensation where 665a345 named ads_blend.h	975470cfa10cb5c00689a2fc5aa31c82fef151a2a607212b21dd371895b0589f
+frozen from	bf04d3e:src/config.cpp	bec94b8b52124937e168307dcf2e0f89a929a113787ffa40eb7dded69d414572
+frozen from	bf04d3e:src/config.h	ff8f034029b28b14bc5670a7209a486fc595b0abd11bdfc16c4eb4d419ded84a
+frozen reader	src/legacy_config/legacy_config.h	def85ceeefcb505c7597260dd4cf4a5c2805239f60cd5aec5bba813d08242187
+frozen reader	src/legacy_config/legacy_config.cpp	3fdebe7106e160c6100885851a401a6594247d4be64a1bf18c816ccd45a38292
+input	the file v0.1.0's config_write_default_if_missing writes (v0.1.0:src/config.cpp lines 233-333, text mode, so CRLF), tests/config_differential/data/first-run-v0.1.0.ini; the test checks the oracle still writes these bytes	8050eb6cabf22e229eb0fb0fe58ffe523355c5c4629735447b4f67174f539ece
