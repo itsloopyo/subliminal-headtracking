@@ -13,6 +13,14 @@
     { "source": "plugins/SubliminalHeadTracking.asi", "target": "Subliminal/Binaries/Win64/SubliminalHeadTracking.asi" }
   ],
 
+  "config": {
+    "path": "Subliminal/Binaries/Win64/CameraUnlock.ini",
+    "anchor": "game_root",
+    "legacy_source": "Subliminal/Binaries/Win64/HeadTracking.ini",
+    "canonical_since": "0.2.0",
+    "per_game": {}
+  },
+
   "runtime_requirements": [],
   "dependencies": []
 }
