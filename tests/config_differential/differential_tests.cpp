@@ -38,6 +38,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <optional>
@@ -437,9 +438,11 @@ void Compare(const std::vector<Input>& inputs) {
 //
 // Each input with a file migrates three times: over a Defaults.ini the owner
 // creates with the built-in values, from a read-only HeadTracking.ini, and over
-// a Defaults.ini that differs from the built-in value on every global row. All
-// three give the settings the import read, since the migration writes `default`
-// only where the imported value is what `default` gives at that launch.
+// a Defaults.ini that differs from the built-in value on every global row. The
+// first two give the settings the import read. A setting still at what v0.1.0
+// shipped is no player's choice (owner rule of 2026-09-26), so it is written
+// `default` and the third gives Defaults.ini's value for it; a setting the
+// player changed keeps the imported value there too.
 
 using Drop = std::tuple<cfg::DropRule, std::string, std::string>;
 
@@ -600,6 +603,57 @@ const char* const kSkewedDefaults =
     "[Hotkeys]\r\nToggleKey=F8\r\nCycleTrackingModeKey=F9\r\nYawModeKey=F10\r\n\r\n"
     "[Light]\r\nLightFollowsHead=false\r\nLightMultiplier=0.5\r\n";
 
+// A global row of the table and whether the player left it at what v0.1.0
+// shipped, with what kSkewedDefaults gives it. The frozen struct's defaults are
+// what v0.1.0 shipped, and its first-run file writes the same values. The two
+// tracking mode rows are one unit, read from [Position] Enabled alone.
+struct FollowRow {
+    const char* key;
+    bool untouched;
+    std::function<void(subliminal_ht::Config&)> skew;
+};
+
+std::vector<FollowRow> FollowRows(const legacy::Config& read) {
+    const legacy::Config shipped;
+    const bool mode = read.position_enabled == shipped.position_enabled;
+    using C = subliminal_ht::Config;
+    return {
+        {"UdpPort", read.udp_port == shipped.udp_port, [](C& c) { c.udp_port = 5252; }},
+        {"EnableOnStartup", read.enable_on_startup == shipped.enable_on_startup, [](C& c) { c.enable_on_startup = false; }},
+        {"WorldSpaceYaw", read.world_space_yaw == shipped.world_space_yaw, [](C& c) { c.world_space_yaw = false; }},
+        {"RotationEnabled", mode, [](C& c) { c.rotation_enabled = false; }},
+        {"PositionEnabled", mode, [](C& c) { c.position_enabled = true; }},
+        {"LocalSmoothing", read.local_smoothing == shipped.local_smoothing, [](C& c) { c.local_smoothing = 0.5f; }},
+        {"RemoteSmoothing", read.remote_smoothing == shipped.remote_smoothing, [](C& c) { c.remote_smoothing = 0.5f; }},
+        {"PositionLimitX", read.limit_x == shipped.limit_x, [](C& c) { c.position_limit_x = 0.5f; }},
+        {"PositionLimitY", read.limit_y == shipped.limit_y, [](C& c) { c.position_limit_y = 0.5f; }},
+        {"PositionLimitYDown", read.limit_y_down == shipped.limit_y_down, [](C& c) { c.position_limit_y_down = 0.5f; }},
+        {"PositionLimitZ", read.limit_z == shipped.limit_z, [](C& c) { c.position_limit_z = 0.5f; }},
+        {"PositionLimitZBack", read.limit_z_back == shipped.limit_z_back, [](C& c) { c.position_limit_z_back = 0.5f; }},
+        {"CollisionEnabled", read.collision_enabled == shipped.collision_enabled, [](C& c) { c.collision_enabled = false; }},
+        {"CollisionReleaseSmoothing", read.collision_release_smoothing == shipped.collision_release_smoothing,
+         [](C& c) { c.collision_release_smoothing = 0.5f; }},
+        // v0.1.0 bound these two in code, so no player could change them.
+        {"ToggleKey", true, [](C& c) { c.toggle_key = "F8"; }},
+        {"CycleTrackingModeKey", true, [](C& c) { c.cycle_tracking_mode_key = "F9"; }},
+        {"YawModeKey", read.yaw_mode_key == shipped.yaw_mode_key, [](C& c) { c.yaw_mode_key = "F10"; }},
+        {"LightFollowsHead", read.flashlight_follows_head == shipped.flashlight_follows_head,
+         [](C& c) { c.light_follows_head = false; }},
+        {"LightMultiplier", read.flashlight_multiplier == shipped.flashlight_multiplier,
+         [](C& c) { c.light_multiplier = 0.5f; }},
+    };
+}
+
+// The value text of `key` in a canonical file, whose keys this table never
+// repeats across sections; nullopt where the file has no such line.
+std::optional<std::string> RowValue(const std::string& bytes, const std::string& key) {
+    const std::string start = "\r\n" + key + "=";
+    const std::size_t at = bytes.find(start);
+    if (at == std::string::npos) return std::nullopt;
+    const std::size_t from = at + start.size();
+    return bytes.substr(from, bytes.find("\r\n", from) - from);
+}
+
 // The folder beside this executable the migrated files are written to, for
 // lint-migrated.mjs, which CTest runs after this test.
 fs::path MigratedFolder() {
@@ -670,6 +724,7 @@ void ImportAgainstMigration(const std::vector<Input>& inputs) {
     int compared = 0;
     int dropping = 0;
     int reticle = 0;
+    std::map<std::string, std::pair<int, int>> follow_seen;  // untouched, changed
     for (const Input& input : inputs) {
         const std::string& name = input.name;
 
@@ -697,6 +752,11 @@ void ImportAgainstMigration(const std::vector<Input>& inputs) {
               name + ": the import reads every input, as the published build did");
 
         const Allowed allowed = ApplyApprovedChanges(read);
+        const std::vector<FollowRow> follow = FollowRows(read);
+        for (const FollowRow& row : follow) {
+            auto& seen = follow_seen[row.key];
+            ++(row.untouched ? seen.first : seen.second);
+        }
         if (!allowed.dropped.empty()) ++dropping;
         if (!read.reticle_follows_aim) ++reticle;
         std::vector<Drop> dropped;
@@ -711,10 +771,12 @@ void ImportAgainstMigration(const std::vector<Input>& inputs) {
         }
 
         // Over a Defaults.ini the owner creates with the built-in values.
+        subliminal_ht::Config migrated_over_built_in;
         {
             Scratch s;
             if (input.present) s.WriteLegacy(input.bytes);
             const subliminal_ht::Config migrated = Migrate(input, s, name, migrated_files);
+            migrated_over_built_in = migrated;
             const std::vector<std::string> diff = Differences(allowed.observed, ObserveCanonical(migrated));
             for (const std::string& d : diff) std::printf("  comparison 2, %s: %s\n", name.c_str(), d.c_str());
             Check(diff.empty(), name + ": comparison 2, the migration runs as the import read, less the approved changes");
@@ -724,6 +786,20 @@ void ImportAgainstMigration(const std::vector<Input>& inputs) {
             CanonicalDiagnostics(ReadFileBytes(s.canonical()), reread);
             Check(Differences(ObserveCanonical(reread), ObserveCanonical(migrated)).empty(),
                   name + ": CameraUnlock.ini reads back as the settings the session runs on");
+
+            // A row the player left at what v0.1.0 shipped is written default. One
+            // they changed holds its value: every shipped value is the schema's,
+            // so a changed one is never what default gives here.
+            const std::string written = ReadFileBytes(s.canonical());
+            for (const FollowRow& row : follow) {
+                const std::optional<std::string> value = RowValue(written, row.key);
+                Check(value.has_value(), name + ": CameraUnlock.ini has a " + row.key + " row");
+                if (!value) continue;
+                Check((*value == "default") == row.untouched,
+                      name + ": " + row.key + "=" + *value +
+                          (row.untouched ? " follows Defaults.ini, as the player never changed it"
+                                         : " is the player's own value"));
+            }
 
             // Fresh equals upgrade: the published build's first-run file, and no
             // file at all, both end as the committed file.
@@ -755,15 +831,25 @@ void ImportAgainstMigration(const std::vector<Input>& inputs) {
             skewed.WriteLegacy(input.bytes);
             skewed.WriteDefaults(kSkewedDefaults);
             const subliminal_ht::Config c = Migrate(input, skewed, name + " (skewed Defaults.ini)", migrated_files);
-            const std::vector<std::string> diff = Differences(allowed.observed, ObserveCanonical(c));
+            subliminal_ht::Config expected = migrated_over_built_in;
+            for (const FollowRow& row : follow) {
+                if (row.untouched) row.skew(expected);
+            }
+            const std::vector<std::string> diff = Differences(ObserveCanonical(expected), ObserveCanonical(c));
             for (const std::string& d : diff) std::printf("  comparison 2, %s (skewed Defaults.ini): %s\n", name.c_str(), d.c_str());
-            Check(diff.empty(), name + ": comparison 2 over a Defaults.ini that differs everywhere");
+            Check(diff.empty(), name + ": comparison 2 over a Defaults.ini that differs everywhere, where each "
+                                "setting the player never changed takes Defaults.ini's value");
         }
         ++compared;
     }
     std::printf("comparison 2: %d inputs, %d with a value the approved changes drop, %d of them [Reticle] Enabled=0\n",
                 compared, dropping, reticle);
     Check(dropping > 0 && reticle > 0, "the inputs reach the pose-shaping and reticle drops");
+    for (const auto& [key, seen] : follow_seen) {
+        const bool code_bound = key == "ToggleKey" || key == "CycleTrackingModeKey";
+        Check(seen.first > 0 && (code_bound || seen.second > 0),
+              "the inputs leave " + key + " at what v0.1.0 shipped and change it");
+    }
 
     // Core's canonical config lint runs over these next (lint-migrated.mjs).
     const fs::path lint = MigratedFolder();

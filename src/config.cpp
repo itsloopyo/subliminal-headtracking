@@ -137,8 +137,33 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     out.inject_next_key = read.inject_hotkeys ? FormatKeyBindings({{kChord, kVkU}}) : std::string();
     out.inject_previous_key = read.inject_hotkeys ? FormatKeyBindings({{kChord, kVkJ}}) : std::string();
 
-    return present ? cfg::ImportResult::Imported(std::move(dropped), std::move(pose_shaping))
-                   : cfg::ImportResult::Absent(std::move(dropped), std::move(pose_shaping));
+    // A setting still at what v0.1.0 shipped is no player's choice, so it
+    // follows Defaults.ini. The frozen struct's defaults are what v0.1.0 shipped:
+    // its first-run file wrote the same values.
+    const legacy::Config shipped;
+    cfg::LegacyFollowsDefaultsIni follows;
+    follows.Setting(Concept::UdpPort, read.udp_port, shipped.udp_port);
+    follows.Setting(Concept::EnableOnStartup, read.enable_on_startup, shipped.enable_on_startup);
+    follows.Setting(Concept::WorldSpaceYaw, read.world_space_yaw, shipped.world_space_yaw);
+    follows.TrackingMode(read.position_enabled, shipped.position_enabled);
+    follows.Setting(Concept::LocalSmoothing, read.local_smoothing, shipped.local_smoothing);
+    follows.Setting(Concept::RemoteSmoothing, read.remote_smoothing, shipped.remote_smoothing);
+    follows.Setting(Concept::PositionLimitX, read.limit_x, shipped.limit_x);
+    follows.Setting(Concept::PositionLimitY, read.limit_y, shipped.limit_y);
+    follows.Setting(Concept::PositionLimitYDown, read.limit_y_down, shipped.limit_y_down);
+    follows.Setting(Concept::PositionLimitZ, read.limit_z, shipped.limit_z);
+    follows.Setting(Concept::PositionLimitZBack, read.limit_z_back, shipped.limit_z_back);
+    follows.Setting(Concept::CollisionEnabled, read.collision_enabled, shipped.collision_enabled);
+    follows.Setting(Concept::CollisionReleaseSmoothing, read.collision_release_smoothing,
+                    shipped.collision_release_smoothing);
+    follows.NotInLegacy(Concept::ToggleKey);
+    follows.NotInLegacy(Concept::CycleTrackingModeKey);
+    follows.Setting(Concept::YawModeKey, read.yaw_mode_key, shipped.yaw_mode_key);
+    follows.Setting(Concept::LightFollowsHead, read.flashlight_follows_head, shipped.flashlight_follows_head);
+    follows.Setting(Concept::LightMultiplier, read.flashlight_multiplier, shipped.flashlight_multiplier);
+
+    return present ? cfg::ImportResult::Imported(std::move(dropped), std::move(pose_shaping), follows.Concepts())
+                   : cfg::ImportResult::Absent(std::move(dropped), std::move(pose_shaping), follows.Concepts());
 }
 
 }  // namespace
