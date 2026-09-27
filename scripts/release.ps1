@@ -92,6 +92,7 @@ try {
     if ($branch -ne 'main') { throw "Releases cut from 'main' only; currently on '$branch'." }
     if (-not (Test-CleanGitStatus)) { throw 'Working tree is dirty - commit or stash first.' }
     if (Test-GitTagExists -Tag "v$new") { throw "Tag v$new already exists." }
+    Assert-ReleaseNotBelowCanonicalSince -RepoRoot $root -Version $new
 
     # Generate CHANGELOG from commits since last tag. This is the gate that
     # aborts when there are no user-facing commits, so run it BEFORE mutating
