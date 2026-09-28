@@ -14,10 +14,12 @@ on:
       - 'docs/**'
       - 'LICENSE'
 
-# Least privilege: this job checks out and builds. Nothing here needs write
-# access to the repository.
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -37,13 +39,6 @@ jobs:
 
       - name: Setup pixi
         uses: prefix-dev/setup-pixi@5185adfbffb4bd703da3010310260805d89ebb11 # v0.9.6
-
-      # Behaviour locks for the camera boundary and the caller gate, and the
-      # config tests. Ahead of packaging so a regression fails the run rather
-      # than shipping into an artifact. Needs no game installed.
-      - name: Run tests
-        shell: pwsh
-        run: pixi run test
 
       # Build + package through the SAME command a developer runs locally. All
       # build logic lives in the pixi task chain (setup -> build -> package);

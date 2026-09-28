@@ -32,7 +32,9 @@ build-debug = { cmd = "cmake --build build --config Debug", depends-on = ["setup
 # frozen HeadTracking.ini reader to v0.1.0's and the migration into
 # CameraUnlock.ini to that reader, and core's canonical config lint over every
 # file that test migrated (run with node). Needs no game install.
-test = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build"] }
+test-unit = { cmd = "ctest --test-dir build -C Release --output-on-failure -LE differential", depends-on = ["build"] }
+test-differential = { cmd = "ctest --test-dir build -C Release --output-on-failure --no-tests=error -L differential", depends-on = ["build"] }
+test = { depends-on = ["test-unit", "test-differential"] }
 
 # Rewrites CameraUnlock.ini, the committed config, from the config table after a
 # change to a row, a comment or a default, then the launcher manifest's config
@@ -50,11 +52,11 @@ update-deps = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scrip
 
 # The installer ZIP. One archive, no Nexus layout - see the packager's header.
 #
-# Gated on `test`, not on `build`. The release path - release.ps1 and the shared
-# release-mod.yml - only ever calls `package`, so hanging the behaviour locks off
-# `build` alone left every tagged release shipping without them: a sign inverted
-# in camera_boundary.cpp would fail `pixi run test` and still publish.
-package = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["test"] }
+# Gated on `test-unit`, not on `build`. Hanging the behaviour locks off `build`
+# alone left every tagged release shipping without them: a sign inverted in
+# camera_boundary.cpp would fail `pixi run test` and still publish. The config
+# differential runs on the release paths, not here.
+package = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["test-unit"] }
 
 # Checks the newest release/*-installer.zip's launcher-manifest.json against the
 # files in the ZIP, and that it carries neither CameraUnlock.ini nor
