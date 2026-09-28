@@ -4,6 +4,24 @@
 [CmdletBinding()]
 param([Parameter(Position = 0)][string]$GamePath)
 $ErrorActionPreference = 'Stop'
+
+# Not Get-FileHash: Windows PowerShell 5.1 autoloads it from a script module,
+# and a powershell.exe started from pwsh (GitHub Actions' shell: pwsh)
+# inherits pwsh's PSModulePath, resolves the Core-only
+# Microsoft.PowerShell.Utility first and reports the cmdlet as not recognized.
+function Get-Sha256Hex {
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$LiteralPath)
+
+    $sha    = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead((Convert-Path -LiteralPath $LiteralPath))
+    try {
+        return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $stream.Dispose()
+        $sha.Dispose()
+    }
+}
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 
 Import-Module (Join-Path $root 'cameraunlock-core/powershell/GamePathDetection.psm1') -Force
@@ -54,7 +72,7 @@ if (-not (Test-Path -LiteralPath $vendored)) {
 }
 $staleLoader = Join-Path $exeDir 'dinput8.dll'
 if (Test-Path -LiteralPath $staleLoader) {
-    if ((Get-FileHash -Algorithm SHA256 $staleLoader).Hash -eq (Get-FileHash -Algorithm SHA256 $vendored).Hash) {
+    if ((Get-Sha256Hex -LiteralPath $staleLoader) -eq (Get-Sha256Hex -LiteralPath $vendored)) {
         Remove-Item -Force -LiteralPath $staleLoader
         Write-Host '  Removed stale dinput8.dll (never loaded by this game)' -ForegroundColor Yellow
     } else {
