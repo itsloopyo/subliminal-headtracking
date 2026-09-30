@@ -32,6 +32,7 @@
 #include "aim_projection.h"
 #include "aim_trace.h"
 #include "builds/build_registry.h"
+#include "builds/runtime_discovery.h"
 #include "camera_boundary.h"
 #include "camera_fov.h"
 #include "flashlight.h"
@@ -478,10 +479,10 @@ void __fastcall GetPlayerViewPoint_Hook(void* self, FVector* outLocation,
     const std::uintptr_t retRva = ReturnRva(_ReturnAddress());
     const auto controller = reinterpret_cast<std::uintptr_t>(self);
 
+    g_origGetPlayerViewPoint(self, outLocation, outRotation);
+    if (!builds::ValidateController(controller)) return;
     const game_state::Verdict gate = game_state::Evaluate(controller);
     game_state::LogTransitions(gate);
-
-    g_origGetPlayerViewPoint(self, outLocation, outRotation);
     const FRotator clean = *outRotation;
     const FVector  cleanEye = *outLocation;
 

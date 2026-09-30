@@ -301,11 +301,10 @@ in them. This project is an unofficial, fan-made modification. It is not
 affiliated with, endorsed by, or sponsored by the game's developers, its
 publishers, its engine vendor, or any other rights holder. It redistributes no
 game code, no extracted game assets and no proprietary DLLs, and it requires a
-legitimately purchased copy of the game. Any engine structure offsets, function
-addresses or byte patterns referenced in the source are measurements of a
-legitimately owned copy of the shipping binary, recorded as numbers. No
-decompiled or disassembled game code is stored in this repository.
-
+legitimately purchased copy of the game. Engine layout measurements, short instruction recognisers and diagnostic
+names identify camera interfaces in the user's installed game. These are used
+for interoperability; the mod does not include complete game-function bodies,
+decompiled implementations or proprietary libraries.
 ## Subliminal footage
 
 - **File:** `assets/readme-clip.gif`, the file the README's embed points at.

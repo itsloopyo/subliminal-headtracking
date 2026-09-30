@@ -78,6 +78,8 @@ set(MOD_SOURCES
     src/ue_vm.cpp
     src/config.cpp
     src/legacy_config/legacy_config.cpp
+    src/builds/runtime_discovery.cpp
+    src/builds/runtime_layout.cpp
     src/builds/build_registry.cpp
     src/builds/steam_offsets.cpp
 )
@@ -120,6 +122,14 @@ set_target_properties(SubliminalHeadTracking PROPERTIES
 option(SUBLIMINAL_BUILD_TESTS "Build the behaviour tests" ON)
 if(SUBLIMINAL_BUILD_TESTS)
     enable_testing()
+    add_executable(subliminal_runtime_discovery_tests tests/runtime_discovery_tests.cpp
+        src/builds/runtime_discovery.cpp src/builds/build_registry.cpp src/builds/steam_offsets.cpp)
+    target_include_directories(subliminal_runtime_discovery_tests PRIVATE src tests cameraunlock-core/cpp/include)
+    target_link_libraries(subliminal_runtime_discovery_tests PRIVATE cameraunlock)
+    add_test(NAME subliminal_runtime_discovery_tests COMMAND subliminal_runtime_discovery_tests)
+    add_executable(subliminal_discovery_bounds_tests tests/discovery_bounds_tests.cpp src/builds/runtime_discovery.cpp)
+    target_include_directories(subliminal_discovery_bounds_tests PRIVATE src cameraunlock-core/cpp/include)
+    add_test(NAME subliminal_discovery_bounds_tests COMMAND subliminal_discovery_bounds_tests)
 
     add_executable(subliminal_boundary_tests
         tests/boundary_tests.cpp

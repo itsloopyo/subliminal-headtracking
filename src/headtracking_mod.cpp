@@ -102,29 +102,12 @@ void LoadConfig() {
         g_config.local_smoothing, g_config.remote_smoothing);
 }
 
-// Fingerprint the host EXE against the build registry. False leaves the mod
-// fully dormant: no hooks installed, game runs vanilla.
 bool SelectBuildProfile(HMODULE host) {
     const auto match = builds::SelectProfile(host);
-    switch (match) {
-        case builds::MatchResult::Matched:
-            return true;
-        case builds::MatchResult::HostNewer:
-            Log::Line("build-check: this game build is NEWER than any profile this "
-                      "mod knows about - check the releases page for an update. "
-                      "Staying dormant; game runs vanilla.");
-            return false;
-        case builds::MatchResult::HostOlder:
-            Log::Line("build-check: this game build is OLDER than the profile - let "
-                      "Steam finish updating. Staying dormant; game runs vanilla.");
-            return false;
-        default:
-            Log::Line("build-check: no matching/complete profile - staying dormant; "
-                      "game runs vanilla.");
-            return false;
-    }
+    if (match == builds::MatchResult::Matched) return true;
+    Log::Line("build-check: camera discovery or executable validation failed; staying dormant");
+    return false;
 }
-
 // Hand the shared UE runtime the module range every RVA is resolved against.
 bool PublishModuleRange(HMODULE host) {
     MODULEINFO mi{};

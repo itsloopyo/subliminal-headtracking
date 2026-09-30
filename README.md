@@ -316,10 +316,9 @@ are unbound by default. An earlier version bound `Ctrl+Shift+U` and
 **Mod not loading:**
 
 - Check `HeadTracking.log` next to `Subliminal-Win64-Shipping.exe`. Its first
-  lines say whether the mod matched your game build and whether the camera hook
-  was installed. If it says the build is newer than any this mod knows about,
-  the game has been patched and the mod needs an update - it stays dormant
-  rather than hooking a build it does not recognize.
+  lines report camera discovery and hook installation. The mod validates the
+  live camera and controller layouts before applying tracking. If discovery or
+  validation fails, an update may be needed for your game build.
 - If there is no log at all, the loader is not being picked up. Check that
   `winmm.dll` is in `Subliminal\Binaries\Win64\` alongside the `.asi`.
 
