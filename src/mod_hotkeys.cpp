@@ -37,10 +37,12 @@ void ToggleTracking() {
     Log::Line("hotkey: tracking %s", enabled ? "ON" : "OFF");
 }
 
-// The session's mode is an atomic the render thread reads each frame, so the
-// cycle applies it here and then saves it.
+// The next mode is computed from the one the game thread last applied, so two
+// presses before it runs are one step, not two. The hook applies it; this saves.
 void CycleTrackingMode() {
-    const TrackingMode mode = g_session->CycleMode();
+    const TrackingMode mode =
+        static_cast<TrackingMode>((static_cast<int>(g_session->GetMode()) + 1) % 3);
+    view_hook::RequestTrackingMode(mode);
     const char* name = mode == TrackingMode::RotationOnly ? "rotation only"
                      : mode == TrackingMode::PositionOnly ? "position only"
                                                           : "rotation and position";

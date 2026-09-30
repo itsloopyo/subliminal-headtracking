@@ -39,7 +39,9 @@ bool           g_componentResolveFailed = false;
 // The component currently being driven, with the transform it had before this
 // mod first touched it. Keyed by pointer: a reloaded level builds a new light,
 // and restoring the old one's numbers onto it would be writing a stale pose.
+// The class is kept so a restore can prove the pointer is still that light.
 std::uintptr_t g_held = 0;
+std::uintptr_t g_heldClass = 0;
 ue::FVector    g_originalLoc{};
 ue::FVector    g_originalRot{};
 bool           g_announced = false;
@@ -119,14 +121,27 @@ bool ResolveTransformFields(std::uintptr_t spot) {
     return true;
 }
 
+// The held light can be destroyed under the mod: the pawn is replaced, or a
+// frame with no pawn skips Follow and leaves g_held behind. SafeWrite only
+// catches an unmapped page, and freed UObject memory is usually still mapped,
+// so a restore into it lands in whatever the allocator reused it for.
+bool HeldIsLive() {
+    return ue_objects::ClassOf(g_held) == g_heldClass
+        && ue_objects::RegisteredInObjectArray(g_held);
+}
+
 // Remember what the game had, once per light. Returns false when the transform
 // cannot be read, which is the one case where writing would leave nothing to
 // restore.
 bool Take(std::uintptr_t spot) {
     if (g_held == spot) return true;
+    // A different light while one is still held: give the old one back first, or
+    // a pawn that is still alive keeps its beam turned by the last tracked frame.
+    Release();
     if (!ue::SafeReadFVector(spot + g_relLocOffset, g_originalLoc)) return false;
     if (!ue::SafeReadFVector(spot + g_relRotOffset, g_originalRot)) return false;
     g_held = spot;
+    g_heldClass = g_componentClass;
     if (!g_announced) {
         g_announced = true;
         Log::Line("flashlight: the beam follows the head now "
@@ -164,8 +179,10 @@ void Follow(std::uintptr_t pawn, const ue::FQuat4d& cleanQ, const ue::FQuat4d& b
 
 void Release() {
     if (!g_held) return;
-    ue::SafeWriteFVector(g_held + g_relRotOffset, g_originalRot);
-    ue::SafeWriteFVector(g_held + g_relLocOffset, g_originalLoc);
+    if (HeldIsLive()) {
+        ue::SafeWriteFVector(g_held + g_relRotOffset, g_originalRot);
+        ue::SafeWriteFVector(g_held + g_relLocOffset, g_originalLoc);
+    }
     g_held = 0;
 }
 

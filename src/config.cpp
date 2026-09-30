@@ -112,7 +112,6 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     out.collision_release_smoothing = read.collision_release_smoothing;
     out.aim_trace_distance = read.aim_trace_distance;
     out.aim_trace_channel = read.aim_trace_channel;
-    out.light_follows_head = read.flashlight_follows_head;
     out.light_multiplier = read.flashlight_multiplier;
     out.widget_dump = read.widget_dump;
 
@@ -159,7 +158,6 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     follows.NotInLegacy(Concept::ToggleKey);
     follows.NotInLegacy(Concept::CycleTrackingModeKey);
     follows.Setting(Concept::YawModeKey, read.yaw_mode_key, shipped.yaw_mode_key);
-    follows.Setting(Concept::LightFollowsHead, read.flashlight_follows_head, shipped.flashlight_follows_head);
     follows.Setting(Concept::LightMultiplier, read.flashlight_multiplier, shipped.flashlight_multiplier);
 
     return present ? cfg::ImportResult::Imported(std::move(dropped), std::move(pose_shaping), follows.Concepts())
@@ -197,7 +195,6 @@ cfg::ConfigTable<Config> Table() {
         .Concept<Concept::ToggleKey>(&Config::toggle_key)
         .Concept<Concept::CycleTrackingModeKey>(&Config::cycle_tracking_mode_key)
         .Concept<Concept::YawModeKey>(&Config::yaw_mode_key)
-        .Concept<Concept::LightFollowsHead>(&Config::light_follows_head)
         .Concept<Concept::LightMultiplier>(&Config::light_multiplier)
         .Local("Aim", "AimTraceDistance", &Config::aim_trace_distance, cfg::FloatCodec(),
                "How far, in centimetres, the aim trace reaches, 100 to 1000000. The trace finds\n"

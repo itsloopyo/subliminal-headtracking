@@ -79,6 +79,9 @@ Dependencies g_deps{};
 std::atomic<bool> g_trackingEnabled{true};
 std::atomic<bool> g_worldSpaceYaw{true};
 std::atomic<int>  g_injectMode{inject::kFirstCaller};
+// A TrackingMode waiting for the game thread, or kNoModeRequest.
+constexpr int kNoModeRequest = -1;
+std::atomic<int>  g_requestedMode{kNoModeRequest};
 
 GetPlayerViewPoint_t g_origGetPlayerViewPoint = nullptr;
 std::atomic<std::uint64_t> g_hookCallCount{0};
@@ -256,6 +259,7 @@ struct PoseSample {
     FVector        PositionOffsetUE;
     double         AimDistance;
     bool           AimHit;
+    bool           AimTraced;
 };
 
 // Time-gated rather than call-gated because this fires on the render caller, so
@@ -289,7 +293,7 @@ void LogPoseDetail(const PoseSample& s) {
         s.Result.Yaw, s.Result.Pitch, s.Result.Roll,
         s.OffsetX, s.OffsetY, s.OffsetZ,
         s.PositionOffsetUE.X, s.PositionOffsetUE.Y, s.PositionOffsetUE.Z,
-        s.AimHit ? "hit" : "miss", s.AimDistance,
+        !s.AimTraced ? "untraced" : s.AimHit ? "hit" : "miss", s.AimDistance,
         dx, dy, haveOffset ? "" : " (invalid)", camera_fov::GameFov(),
         camera_fov::LastZoomFactor());
 }
@@ -437,6 +441,7 @@ LeanSample ApplyLean(Session& session, const Config& config, const FQuat4d& clea
 struct AimSample {
     double Distance = 0.0;
     bool   Hit = false;
+    bool   Traced = false;
 };
 
 // Where the interaction ray lands, projected into the frame that is about to be
@@ -444,8 +449,11 @@ struct AimSample {
 //
 // The ray leaves the CLEAN eye along the CLEAN forward - it is the mouse-driven
 // aim the game will use - while the frame is drawn from the leaned eye, and the
-// vector between the two is the parallax the reticle has to carry.
-AimSample UpdateReticle(const Config& config, std::uintptr_t pawn,
+// vector between the two is the parallax the reticle has to carry. With no lean
+// there is no parallax: the hit point and the aim direction project to the same
+// pixel from the clean eye, so the trace is skipped rather than paid for every
+// frame of rotation-only tracking.
+AimSample UpdateReticle(const Config& config, std::uintptr_t pawn, bool leaned,
                         const FVector& renderedEye, const FVector& cleanEye,
                         const FQuat4d& cleanQ, const FQuat4d& trackedQ,
                         float fovDegrees) {
@@ -455,7 +463,8 @@ AimSample UpdateReticle(const Config& config, std::uintptr_t pawn,
     frame.RenderedEye = renderedEye;
     frame.TrackedRotation = trackedQ;
     frame.Direction = ue::QuatRotateVec(cleanQ, FVector{1.0, 0.0, 0.0});
-    if (pawn != 0) {
+    if (pawn != 0 && leaned) {
+        aim.Traced = true;
         const aim_trace::Result hit = aim_trace::Cast(
             pawn, cleanEye, frame.Direction, config.aim_trace_distance);
         if (hit.Valid && hit.Hit) {
@@ -483,6 +492,9 @@ void __fastcall GetPlayerViewPoint_Hook(void* self, FVector* outLocation,
     if (!builds::ValidateController(controller)) return;
     const game_state::Verdict gate = game_state::Evaluate(controller);
     game_state::LogTransitions(gate);
+    if (const int requested = g_requestedMode.exchange(kNoModeRequest, std::memory_order_relaxed);
+        requested != kNoModeRequest)
+        g_deps.session->SetMode(static_cast<cameraunlock::TrackingMode>(requested));
     const FRotator clean = *outRotation;
     const FVector  cleanEye = *outLocation;
 
@@ -546,8 +558,8 @@ void __fastcall GetPlayerViewPoint_Hook(void* self, FVector* outLocation,
     // It is atan(tan(a) * factor), so past a quarter turn tan changes sign and
     // atan folds the answer back into (-90, 90): the head turns 100 degrees one
     // way and the view swings 63 the other. Nothing upstream bounds the pose -
-    // there is no rotation limit in this mod, and YawSensitivity alone reaches
-    // 100 - so the bound belongs here. Passing an out-of-contract angle through
+    // there is no rotation limit in this mod, and the tracker sends what it
+    // likes - so the bound belongs here. Passing an out-of-contract angle through
     // unscaled is the honest answer: it is the uncompensated view, not a
     // wrong-signed one.
     constexpr float kMaxScalableDeg = 90.0f;
@@ -567,7 +579,8 @@ void __fastcall GetPlayerViewPoint_Hook(void* self, FVector* outLocation,
     const std::uintptr_t pawn = game_state::PossessedPawn(controller);
     const LeanSample lean = ApplyLean(session, config, cleanQ, cleanEye, pawn, dt,
                                       fov.Zoom, outLocation);
-    const AimSample aim = UpdateReticle(config, pawn, *outLocation, cleanEye, cleanQ,
+    const bool leaned = lean.Applied.X != 0.0 || lean.Applied.Y != 0.0 || lean.Applied.Z != 0.0;
+    const AimSample aim = UpdateReticle(config, pawn, leaned, *outLocation, cleanEye, cleanQ,
                                         trackedQ, fov.Degrees);
 
     // After the lean, because the beam leaves the eye the frame is drawn from,
@@ -580,20 +593,18 @@ void __fastcall GetPlayerViewPoint_Hook(void* self, FVector* outLocation,
     // asks for - the two are not the same operation once more than one axis is
     // non-zero, and matching the camera's composition is what stops the beam and
     // the view disagreeing about which way the head turned.
-    if (config.light_follows_head) {
-        const auto beam = cameraunlock::effects::ScaleHeadEuler(
-            {static_cast<float>(yaw), static_cast<float>(pitch), static_cast<float>(roll)},
-            config.light_multiplier);
-        FRotator beamRot = clean;
-        camera_boundary::ApplyHeadPose(beamRot, beam.yaw, beam.pitch, beam.roll,
-                                       worldSpaceYaw);
-        flashlight::Follow(pawn, cleanQ,
-                           ue::QuatFromEulerDeg(beamRot.Pitch, beamRot.Yaw, beamRot.Roll),
-                           lean.Applied);
-    }
+    const auto beam = cameraunlock::effects::ScaleHeadEuler(
+        {static_cast<float>(yaw), static_cast<float>(pitch), static_cast<float>(roll)},
+        config.light_multiplier);
+    FRotator beamRot = clean;
+    camera_boundary::ApplyHeadPose(beamRot, beam.yaw, beam.pitch, beam.roll,
+                                   worldSpaceYaw);
+    flashlight::Follow(pawn, cleanQ,
+                       ue::QuatFromEulerDeg(beamRot.Pitch, beamRot.Yaw, beamRot.Roll),
+                       lean.Applied);
 
     LogPoseDetail({call, retRva, clean, yaw, pitch, roll, *outRotation,
-                   lean.X, lean.Y, lean.Z, lean.Applied, aim.Distance, aim.Hit});
+                   lean.X, lean.Y, lean.Z, lean.Applied, aim.Distance, aim.Hit, aim.Traced});
 }
 
 }  // namespace
@@ -650,7 +661,12 @@ void SetTrackingEnabled(bool enabled) { g_trackingEnabled.store(enabled); }
 bool WorldSpaceYaw() { return g_worldSpaceYaw.load(); }
 void SetWorldSpaceYaw(bool worldSpaceYaw) { g_worldSpaceYaw.store(worldSpaceYaw); }
 
+void RequestTrackingMode(cameraunlock::TrackingMode mode) {
+    g_requestedMode.store(static_cast<int>(mode), std::memory_order_relaxed);
+}
+
 int  InjectMode() { return g_injectMode.load(); }
 void SetInjectMode(int mode) { g_injectMode.store(mode); }
 
 }  // namespace subliminal_ht::view_hook
+

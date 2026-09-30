@@ -35,6 +35,12 @@ void SetTrackingEnabled(bool enabled);
 bool WorldSpaceYaw();
 void SetWorldSpaceYaw(bool worldSpaceYaw);
 
+// Ask for a tracking mode. Applied by the hook on the game thread, because
+// switching position off resets the session's position interpolator and
+// processor, which Update() is using on that thread. Requests made before the
+// next hook call coalesce to the last one.
+void RequestTrackingMode(cameraunlock::TrackingMode mode);
+
 // Which GetPlayerViewPoint caller gets the head pose. See inject_mode.h.
 int  InjectMode();
 void SetInjectMode(int mode);

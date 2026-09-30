@@ -7,9 +7,9 @@
 // src/config.cpp, src/config.h and src/logging.h beside this file are byte
 // copies of v0.1.0's, compiled here as they shipped, with their namespace
 // renamed by the macro below so they can sit in one program beside this
-// build's subliminal_ht. The cameraunlock-core sources they compile hold the
-// same code at v0.1.0's pin (665a345) and at this repo's (CMakeLists.txt pins
-// them by hash; provenance.tsv names the one comment that differs). What is
+// build's subliminal_ht. The shared cameraunlock-core sources and the private
+// head-follow light header hold v0.1.0's code (665a345), pinned by hash in
+// CMakeLists.txt and recorded in provenance.tsv. What is
 // transcribed is the startup code that consumed the settings, which cannot be
 // compiled into a test because it hooks the game:
 //
@@ -26,7 +26,10 @@
 //   src/mod_hotkeys.cpp       lines 77-93    the hotkey registrations, as data
 
 #define subliminal_ht subliminal_ht_v010
+// The historical light settings have a different layout from current core.
+#define effects effects_v010
 #include "src/config.cpp"
+#undef effects
 #undef subliminal_ht
 
 #include "oracle_reader.h"

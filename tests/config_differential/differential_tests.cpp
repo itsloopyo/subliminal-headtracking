@@ -431,6 +431,8 @@ void Compare(const std::vector<Input>& inputs) {
 //                 identity. Every shipped value is identity, so nothing folds.
 //   reticle       [Reticle] Enabled=0 is dropped, and the crosshair ring
 //                 follows the aim.
+//   light         core's config-schema.json retires the light switch. The beam
+//                 follows the head with the imported multiplier.
 //
 // The frozen reader holds every float finite and inside a range the canonical
 // rows accept, and both trace channels inside 0-31, so no input needs N2 and
@@ -478,7 +480,7 @@ Record ObserveCanonical(const subliminal_ht::Config& c) {
     g.reticle_follows_aim = true;
     g.aim_trace_distance = c.aim_trace_distance;
     g.aim_trace_channel = c.aim_trace_channel;
-    g.light_follows_head = c.light_follows_head;
+    g.light_follows_head = true;
     g.light_multiplier = c.light_multiplier;
     g.widget_dump = c.widget_dump;
     const std::pair<int, const std::string*> lists[] = {
@@ -523,6 +525,7 @@ Allowed ApplyApprovedChanges(const legacy::Config& read) {
     shaping(c.position_sensitivity_z, 1.0f, "Position", "SensitivityZ");
     if (!c.reticle_follows_aim) a.dropped.push_back({cfg::DropRule::Reticle, "Reticle", "Enabled"});
     c.reticle_follows_aim = true;
+    c.flashlight_follows_head = true;
 
     std::sort(a.dropped.begin(), a.dropped.end());
     a.observed = ObserveImport(c);
@@ -601,7 +604,7 @@ const char* const kSkewedDefaults =
     "[Position]\r\nPositionEnabled=true\r\nPositionLimitX=0.5\r\nPositionLimitY=0.5\r\nPositionLimitYDown=0.5\r\n"
     "PositionLimitZ=0.5\r\nPositionLimitZBack=0.5\r\nCollisionEnabled=false\r\nCollisionReleaseSmoothing=0.5\r\n\r\n"
     "[Hotkeys]\r\nToggleKey=F8\r\nCycleTrackingModeKey=F9\r\nYawModeKey=F10\r\n\r\n"
-    "[Light]\r\nLightFollowsHead=false\r\nLightMultiplier=0.5\r\n";
+    "[Light]\r\nLightMultiplier=0.5\r\n";
 
 // A global row of the table and whether the player left it at what v0.1.0
 // shipped, with what kSkewedDefaults gives it. The frozen struct's defaults are
@@ -637,8 +640,6 @@ std::vector<FollowRow> FollowRows(const legacy::Config& read) {
         {"ToggleKey", true, [](C& c) { c.toggle_key = "F8"; }},
         {"CycleTrackingModeKey", true, [](C& c) { c.cycle_tracking_mode_key = "F9"; }},
         {"YawModeKey", read.yaw_mode_key == shipped.yaw_mode_key, [](C& c) { c.yaw_mode_key = "F10"; }},
-        {"LightFollowsHead", read.flashlight_follows_head == shipped.flashlight_follows_head,
-         [](C& c) { c.light_follows_head = false; }},
         {"LightMultiplier", read.flashlight_multiplier == shipped.flashlight_multiplier,
          [](C& c) { c.light_multiplier = 0.5f; }},
     };

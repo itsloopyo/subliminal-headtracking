@@ -195,6 +195,10 @@ if(SUBLIMINAL_BUILD_TESTS)
         src/config.cpp
         src/legacy_config/legacy_config.cpp
     )
+    set_source_files_properties(
+        ${SUBLIMINAL_DIFFERENTIAL_DIR}/oracle/oracle_reader.cpp
+        PROPERTIES INCLUDE_DIRECTORIES "${SUBLIMINAL_DIFFERENTIAL_DIR}/oracle/include"
+    )
     target_include_directories(subliminal_config_differential PRIVATE
         src
         ${SUBLIMINAL_DIFFERENTIAL_DIR}
@@ -217,8 +221,8 @@ if(SUBLIMINAL_BUILD_TESTS)
 
     # What the differential test compiles is pinned by hash, line endings aside:
     # the oracle's byte copies must stay v0.1.0's (git show v0.1.0:src/<file>),
-    # the core sources both readers compile must hold the code v0.1.0 was built
-    # with (core 665a345), and the frozen reader is never edited.
+    # the shared core sources and the oracle's private header must hold the code
+    # v0.1.0 was built with (core 665a345), and the frozen reader is never edited.
     function(subliminal_require_hash path expected)
         file(READ "${path}" text)
         string(REPLACE "\r" "" text "${text}")
@@ -244,7 +248,7 @@ if(SUBLIMINAL_BUILD_TESTS)
             "${SUBLIMINAL_CORE_DIR}/src/logging/file_log.cpp|73c53c2baa06bbfebe8211f62678aa2b60cb95f604743d3686951ba56b87ea47"
             "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/camera/lean_clamp.h|a53cf2d4c0060643d2cec5308f0f979bf5868c4f892a62c9bbe4572c427c2a8b"
             "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/data/position_settings.h|b24dceb8e25475aebc5a468a5c7362a4a4e64204d183d1408525345f32f547f5"
-            "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/effects/head_follow_light.h|975470cfa10cb5c00689a2fc5aa31c82fef151a2a607212b21dd371895b0589f"
+            "${SUBLIMINAL_DIFFERENTIAL_DIR}/oracle/include/cameraunlock/effects/head_follow_light.h|05c1af3befc789e7dfc665c459ee026cdd94c7a9286a805cd20f77c21606b24c"
             "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/math/smoothing_utils.h|fc2146f8c585e5f610c7234e302f59de4945679cfa28ff479ca47477ec073f22"
             "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/math/vec3.h|021c45902da44d12911a7cacd9b76fa28775b382583dca2e5e9df3888e242683"
             "${SUBLIMINAL_CORE_DIR}/include/cameraunlock/math/angle_utils.h|d7a905270933e3cb0c4c361d29d3fd701655498cbcd1875ea79d180468bdbe6a"
@@ -257,3 +261,4 @@ if(SUBLIMINAL_BUILD_TESTS)
         subliminal_require_hash("${pinned_path}" "${pinned_hash}")
     endforeach()
 endif()
+

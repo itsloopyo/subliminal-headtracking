@@ -144,13 +144,14 @@ void TheCommittedFileFollowsDefaultsIni() {
           "PositionLimitX=default", "PositionLimitY=default", "PositionLimitYDown=default", "PositionLimitZ=default",
           "PositionLimitZBack=default", "CollisionEnabled=default", "CollisionMargin=20.0", "; CollisionChannel=0",
           "CollisionReleaseSmoothing=default", "ToggleKey=default", "CycleTrackingModeKey=default",
-          "YawModeKey=default", "LightFollowsHead=default", "LightMultiplier=default", "AimTraceDistance=20000.0",
+          "YawModeKey=default", "LightMultiplier=default", "AimTraceDistance=20000.0",
           "; AimTraceChannel=0", "InjectNextKey=", "InjectPreviousKey=", "WidgetDump=false"}) {
         Check(Holds(committed, line), std::string("the committed file holds ") + line);
     }
     Check(committed.find("Sensitivity") == std::string::npos && committed.find("Invert") == std::string::npos,
           "the committed file has no sensitivity or inversion");
     Check(committed.find("[Reticle]") == std::string::npos, "the committed file has no reticle setting");
+    Check(committed.find("LightFollowsHead") == std::string::npos, "the committed file has no retired light switch");
 }
 
 void FirstLaunchCreatesTheCommittedFile() {
@@ -169,7 +170,7 @@ void FirstLaunchCreatesTheCommittedFile() {
           "tracking starts in rotation and position");
     Check(loaded.collision_enabled && loaded.collision_margin == 20.0f && loaded.collision_channel == 0,
           "the wall check starts on, 20cm off a wall, on channel 0");
-    Check(loaded.light_follows_head && loaded.light_multiplier == 1.5f, "the flashlight follows the head at 1.5");
+    Check(loaded.light_multiplier == 1.5f, "the flashlight follows the head at 1.5");
     Check(loaded.aim_trace_distance == 20000.0f && loaded.aim_trace_channel == 0,
           "the aim trace reaches 200m on channel 0");
 }
@@ -188,6 +189,17 @@ void ADefaultRowFollowsDefaultsIni() {
     Check(!c.collision_enabled, "CollisionEnabled follows Defaults.ini");
     Check(c.light_multiplier == 1.0f, "LightMultiplier follows Defaults.ini");
     Check(c.collision_margin == 20.0f, "CollisionMargin stays the game's own");
+}
+
+void TheRetiredLightSwitchLeavesTheMultiplierAlone() {
+    Scratch s("retired_light");
+    s.Load();
+    WriteFileBytes(s.ini(), "[CameraUnlock]\r\nConfigFormat=1\r\n[Light]\r\n"
+                            "LightFollowsHead=false\r\nLightMultiplier=2.0\r\n");
+    Check(s.Load().light_multiplier == 2.0f, "the retired switch leaves the chosen multiplier intact");
+    WriteFileBytes(s.ini(), "[CameraUnlock]\r\nConfigFormat=1\r\n[Light]\r\n"
+                            "LightFollowsHead=true\r\nLightMultiplier=0\r\n");
+    Check(s.Load().light_multiplier == 0.0f, "zero keeps the beam on the aim despite the retired switch");
 }
 
 void TheYawToggleSavesItsLineAndNothingElse() {
@@ -281,6 +293,7 @@ int main(int argc, char** argv) {
     TheCommittedFileFollowsDefaultsIni();
     FirstLaunchCreatesTheCommittedFile();
     ADefaultRowFollowsDefaultsIni();
+    TheRetiredLightSwitchLeavesTheMultiplierAlone();
     TheYawToggleSavesItsLineAndNothingElse();
     TheModeCycleSavesThePair();
     TheLegacyFileIsImportedAndLeftAsItWas();

@@ -69,7 +69,6 @@ struct Config {
     // and how far it leads the head. The defaults and the bounds are the fleet's,
     // from cameraunlock::effects - 1.5 leads the view, 1.0 matches it, 0 pins the
     // beam back on the aim, which is what the game does unmodded.
-    bool light_follows_head = true;
     float light_multiplier = cameraunlock::effects::kDefaultLightMultiplier;
 
     // How far the aim trace reaches, in UE units (cm). Past this the reticle
